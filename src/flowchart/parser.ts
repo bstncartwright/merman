@@ -6,9 +6,10 @@ import type {
   FlowchartNode,
   FlowchartSubgraph,
 } from "./types.js"
+import { MermaidSyntaxError } from "../diagnostics.js"
 import {
   firstMeaningfulMermaidLine,
-  meaningfulMermaidLines,
+  meaningfulNumberedMermaidLines,
   stripMermaidQuotes as stripQuotes,
 } from "../core/mermaid.js"
 
@@ -18,6 +19,7 @@ const ID_RE = "[A-Za-z_][A-Za-z0-9_.-]*"
 const SUBGRAPH_RE = /^subgraph\s+(.+)$/i
 const SUBGRAPH_WITH_LABEL_RE = new RegExp(`^(${ID_RE})\\s*\\[(.+)\\]$`)
 const SUBGRAPH_DIRECTION_RE = /^direction\s+(TB|TD|BT|LR|RL)$/i
+const IGNORED_PRESENTATION_RE = /^(?:classDef|class|style|linkStyle)\b/i
 const DATABASE_NODE_RE = new RegExp(`^(${ID_RE})\\[\\((.+)\\)\\]$`)
 const SUBROUTINE_NODE_RE = new RegExp(`^(${ID_RE})\\[\\[(.+)\\]\\]$`)
 const ROUNDED_BRACKET_NODE_RE = new RegExp(`^(${ID_RE})\\(\\[(.+)\\]\\)$`)
@@ -124,15 +126,19 @@ export function parseMermaidFlowchartDiagram(content: string): FlowchartDiagram 
   const nodes = new Map<string, FlowchartNode>()
   const edges: FlowchartEdge[] = []
   const subgraphs: FlowchartSubgraph[] = []
-  const subgraphStack: FlowchartSubgraph[] = []
+  const subgraphStack: Array<{ subgraph: FlowchartSubgraph; lineNumber: number; sourceLine: string }> = []
   let direction: FlowchartDirection = DEFAULT_DIRECTION
 
-  for (const line of meaningfulMermaidLines(content)) {
+  for (const source of meaningfulNumberedMermaidLines(content)) {
+    const line = source.text
     const header = line.match(FLOWCHART_HEADER_RE)
     if (header) {
       direction = normalizeDirection(header[2])
       continue
     }
+
+    // Mermaid CSS styling does not apply to terminal theme rendering.
+    if (IGNORED_PRESENTATION_RE.test(line)) continue
 
     const subgraphMatch = line.match(SUBGRAPH_RE)
     if (subgraphMatch) {
@@ -140,23 +146,34 @@ export function parseMermaidFlowchartDiagram(content: string): FlowchartDiagram 
       const subgraph: FlowchartSubgraph = {
         ...parsed,
         nodeIds: [],
-        parentId: subgraphStack[subgraphStack.length - 1]?.id,
+        parentId: subgraphStack[subgraphStack.length - 1]?.subgraph.id,
       }
       subgraphs.push(subgraph)
-      subgraphStack.push(subgraph)
+      subgraphStack.push({ subgraph, lineNumber: source.lineNumber, sourceLine: line })
       continue
     }
 
     if (/^end$/i.test(line)) {
+      if (subgraphStack.length === 0) {
+        throw new MermaidSyntaxError("flowchart", source.lineNumber, line, 'Unexpected "end" without an open subgraph')
+      }
       subgraphStack.pop()
       continue
     }
 
-    const currentSubgraph = subgraphStack[subgraphStack.length - 1]
+    const currentSubgraph = subgraphStack[subgraphStack.length - 1]?.subgraph
 
     const subgraphDirection = line.match(SUBGRAPH_DIRECTION_RE)
     if (subgraphDirection) {
-      if (currentSubgraph) currentSubgraph.direction = normalizeDirection(subgraphDirection[1])
+      if (!currentSubgraph) {
+        throw new MermaidSyntaxError(
+          "flowchart",
+          source.lineNumber,
+          line,
+          'A "direction" statement requires an open subgraph',
+        )
+      }
+      currentSubgraph.direction = normalizeDirection(subgraphDirection[1])
       continue
     }
 
@@ -178,7 +195,20 @@ export function parseMermaidFlowchartDiagram(content: string): FlowchartDiagram 
     if (hasExplicitNodeShape(line)) {
       const node = ensureNode(nodes, line)
       addNodeToSubgraph(currentSubgraph, node.id)
+      continue
     }
+
+    throw new MermaidSyntaxError("flowchart", source.lineNumber, line)
+  }
+
+  const unclosedSubgraph = subgraphStack[subgraphStack.length - 1]
+  if (unclosedSubgraph) {
+    throw new MermaidSyntaxError(
+      "flowchart",
+      unclosedSubgraph.lineNumber,
+      unclosedSubgraph.sourceLine,
+      'Unclosed subgraph; expected "end"',
+    )
   }
 
   return { direction, nodes: [...nodes.values()], edges, subgraphs }

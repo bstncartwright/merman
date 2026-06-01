@@ -1,5 +1,6 @@
-import { firstMeaningfulMermaidLine, mermaidLines } from "../core/mermaid.js"
+import { firstMeaningfulMermaidLine, numberedMermaidLines } from "../core/mermaid.js"
 import { splitDiagramLines } from "../core/text-lines.js"
+import { MermaidSyntaxError } from "../diagnostics.js"
 import { normalizeStateDiagramEndpoint, stateDiagramEndMarkerId, stateDiagramStartMarkerId } from "./endpoint.js"
 import type {
   StateDiagram,
@@ -82,11 +83,14 @@ export function parseMermaidStateDiagram(content: string): StateDiagram {
   const transitions: StateDiagramTransition[] = []
   const composites: StateDiagramCompositeState[] = []
   const notes: StateDiagramNote[] = []
-  const parentStack: string[] = []
-  let pendingNote: { target: string; position: "left" | "right"; lines: string[] } | undefined
+  const parentStack: Array<{ id: string; lineNumber: number; sourceLine: string }> = []
+  let pendingNote:
+    | { target: string; position: "left" | "right"; lines: string[]; lineNumber: number; sourceLine: string }
+    | undefined
   let direction: StateDiagramDirection = DEFAULT_DIRECTION
 
-  for (const line of mermaidLines(content)) {
+  for (const source of numberedMermaidLines(content)) {
+    const line = source.text
     if (pendingNote) {
       if (NOTE_END_RE.test(line)) {
         notes.push({
@@ -104,11 +108,14 @@ export function parseMermaidStateDiagram(content: string): StateDiagram {
     if (!line || line.startsWith("%%") || isMermaidHeader(line)) continue
 
     if (line === "}") {
+      if (parentStack.length === 0) {
+        throw new MermaidSyntaxError("state", source.lineNumber, line, 'Unexpected "}" without an open composite state')
+      }
       parentStack.pop()
       continue
     }
 
-    const parentId = parentStack[parentStack.length - 1]
+    const parentId = parentStack[parentStack.length - 1]?.id
 
     const directionMatch = line.match(DIRECTION_RE)
     if (directionMatch) {
@@ -132,6 +139,8 @@ export function parseMermaidStateDiagram(content: string): StateDiagram {
         position: noteMatch[1]!.toLowerCase() as "left" | "right",
         target: noteMatch[2]!,
         lines: [],
+        lineNumber: source.lineNumber,
+        sourceLine: line,
       }
       continue
     }
@@ -144,7 +153,7 @@ export function parseMermaidStateDiagram(content: string): StateDiagram {
         label: compositeMatch[1] ?? id,
         ...(parentId ? { parentId } : {}),
       })
-      parentStack.push(id)
+      parentStack.push({ id, lineNumber: source.lineNumber, sourceLine: line })
       continue
     }
 
@@ -169,15 +178,30 @@ export function parseMermaidStateDiagram(content: string): StateDiagram {
       ensureState(states, from, rawFrom === "[*]" ? "●" : from, rawFrom === "[*]" ? "start" : "state", parentId)
       ensureState(states, to, rawTo === "[*]" ? "◎" : to, rawTo === "[*]" ? "end" : "state", parentId)
       transitions.push({ from, to, label: transitionMatch[3]?.trim() ?? "" })
+      continue
     }
+
+    throw new MermaidSyntaxError("state", source.lineNumber, line)
   }
 
-  if (pendingNote)
-    notes.push({
-      target: pendingNote.target,
-      position: pendingNote.position,
-      lines: pendingNote.lines,
-    })
+  if (pendingNote) {
+    throw new MermaidSyntaxError(
+      "state",
+      pendingNote.lineNumber,
+      pendingNote.sourceLine,
+      'Unclosed note; expected "end note"',
+    )
+  }
+
+  const unclosedComposite = parentStack[parentStack.length - 1]
+  if (unclosedComposite) {
+    throw new MermaidSyntaxError(
+      "state",
+      unclosedComposite.lineNumber,
+      unclosedComposite.sourceLine,
+      'Unclosed composite state; expected "}"',
+    )
+  }
 
   if (composites.length === 0) {
     return { direction, states: [...states.values()], transitions, composites, notes }

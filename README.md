@@ -193,6 +193,36 @@ switch (parsed.kind) {
 }
 ```
 
+### Supported Syntax
+
+`merman` implements a terminal-oriented Mermaid subset. Auto-detected input
+must begin with one of the headers below (comments and blank lines may precede
+it). `--kind` in the CLI can be used when the header is omitted.
+
+| Diagram   | Supported statements                                                                                                                                                                                                                                                                                                             |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Flowchart | `flowchart` / `graph` with `TB`, `TD`, `BT`, `LR`, or `RL`; boxed, rounded, database, subroutine, and decision nodes; `-->`, `==>`, `-.->` edges with pipe or inline labels; nested `subgraph` / `end`; `direction` inside subgraphs; accepted but ignored `classDef`, `class`, `style`, and `linkStyle` presentation directives |
+| Sequence  | `sequenceDiagram`; `participant` / `actor`; messages using `->>`, `-->>`, `->`, `-->`, `-x`, `--x`, `-)`, or `--)` with activation shorthand; `activate` / `deactivate`; `Note over`; `autonumber`; `box`, `alt` / `else`, and `loop` blocks closed by `end`                                                                     |
+| State     | `stateDiagram` / `stateDiagram-v2`; `direction` with `TB`, `TD`, `LR`, or `RL`; `A --> B: label` transitions and `[*]` markers; quoted aliases (`state "Label" as Id`); choice states; composite states; inline or multiline left/right notes                                                                                    |
+
+Unsupported structural statements are rejected rather than silently omitted
+from the render. Flowchart `classDef`, `class`, `style`, and `linkStyle`
+directives are accepted and ignored because terminal themes control styling.
+`parse` and `render` throw `MermaidSyntaxError` for recognized diagram kinds
+with unsupported structural or malformed syntax:
+
+```ts
+import { MermaidSyntaxError, render } from "@kitlangton/merman"
+
+try {
+  render(source)
+} catch (error) {
+  if (error instanceof MermaidSyntaxError) {
+    console.error(error.kind, error.lineNumber, error.sourceLine)
+  }
+}
+```
+
 ### Inside an OpenTUI app
 
 Live, themeable, animatable diagrams are kind-specific (each has its own

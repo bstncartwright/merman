@@ -1,10 +1,12 @@
 import * as Flowchart from "./flowchart/index.js"
 import * as Sequence from "./sequence/index.js"
 import * as State from "./state/index.js"
+import type { MermaidDiagramKind } from "./diagnostics.js"
 
 export { Flowchart, Sequence, State }
+export { MermaidSyntaxError } from "./diagnostics.js"
 
-export type DiagramKind = "flowchart" | "sequence" | "state"
+export type DiagramKind = MermaidDiagramKind
 
 export type ParsedDiagram =
   | { readonly kind: "flowchart"; readonly diagram: Flowchart.Diagram }

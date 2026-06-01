@@ -17,9 +17,10 @@ import {
 import { diagramTextWidth } from "../core/text.js"
 import {
   firstMeaningfulMermaidLine,
-  meaningfulMermaidLines,
+  meaningfulNumberedMermaidLines,
   stripMermaidQuotes as stripQuotes,
 } from "../core/mermaid.js"
+import { MermaidSyntaxError } from "../diagnostics.js"
 import { renderDiagramGridAnsi, renderDiagramGridStyledText } from "../core/render-grid.js"
 import {
   DEFAULT_FRAGMENT_BORDER_STYLE,
@@ -261,12 +262,13 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
   const messages: SequenceMessage[] = []
   const steps: SequenceStep[] = []
   const groups: SequenceParticipantGroup[] = []
-  const blockStack: Array<"box" | "alt" | "loop"> = []
+  const blockStack: Array<{ kind: "box" | "alt" | "loop"; lineNumber: number; sourceLine: string }> = []
   const groupStack: SequenceParticipantGroup[] = []
   let nextMessageNumber: number | undefined
   let messageNumberIncrement = 1
 
-  for (const line of meaningfulMermaidLines(content)) {
+  for (const source of meaningfulNumberedMermaidLines(content)) {
+    const line = source.text
     if (line.toLowerCase() === "sequencediagram") {
       continue
     }
@@ -286,7 +288,7 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
       }
       groups.push(group)
       groupStack.push(group)
-      blockStack.push("box")
+      blockStack.push({ kind: "box", lineNumber: source.lineNumber, sourceLine: line })
       continue
     }
 
@@ -328,14 +330,14 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
 
     const altMatch = line.match(ALT_RE)
     if (altMatch) {
-      blockStack.push("alt")
+      blockStack.push({ kind: "alt", lineNumber: source.lineNumber, sourceLine: line })
       steps.push({ type: "fragment", fragment: { kind: "alt", label: stripQuotes(altMatch[1]!) } })
       continue
     }
 
     const loopMatch = line.match(LOOP_RE)
     if (loopMatch) {
-      blockStack.push("loop")
+      blockStack.push({ kind: "loop", lineNumber: source.lineNumber, sourceLine: line })
       steps.push({
         type: "fragment",
         fragment: { kind: "loop", label: stripQuotes(loopMatch[1]!) },
@@ -345,6 +347,14 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
 
     const elseMatch = line.match(ELSE_RE)
     if (elseMatch) {
+      if (blockStack[blockStack.length - 1]?.kind !== "alt") {
+        throw new MermaidSyntaxError(
+          "sequence",
+          source.lineNumber,
+          line,
+          'Unexpected "else" without an open "alt" block',
+        )
+      }
       steps.push({
         type: "fragment",
         fragment: { kind: "else", label: stripQuotes(elseMatch[1] ?? "") },
@@ -354,11 +364,14 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
 
     if (line.toLowerCase() === "end") {
       const block = blockStack.pop()
-      if (block === "box") {
+      if (!block) {
+        throw new MermaidSyntaxError("sequence", source.lineNumber, line, 'Unexpected "end" without an open block')
+      }
+      if (block.kind === "box") {
         groupStack.pop()
         continue
       }
-      steps.push({ type: "fragment", fragment: { kind: "end", label: block ?? "" } })
+      steps.push({ type: "fragment", fragment: { kind: "end", label: block.kind } })
       continue
     }
 
@@ -396,7 +409,20 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
       }
       messages.push(message)
       steps.push({ type: "message", message })
+      continue
     }
+
+    throw new MermaidSyntaxError("sequence", source.lineNumber, line)
+  }
+
+  const unclosedBlock = blockStack[blockStack.length - 1]
+  if (unclosedBlock) {
+    throw new MermaidSyntaxError(
+      "sequence",
+      unclosedBlock.lineNumber,
+      unclosedBlock.sourceLine,
+      `Unclosed ${unclosedBlock.kind} block; expected "end"`,
+    )
   }
 
   return { participants, messages, steps, groups }

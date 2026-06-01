@@ -41,4 +41,12 @@ describe("merman CLI", () => {
     expect(result.stdout).toBe("")
     expect(result.stderr).toContain("Could not detect diagram kind")
   })
+
+  test("reports unsupported syntax with its input line", async () => {
+    const result = await runCli([], "flowchart LR\n  A --> B\n  A --- B")
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toBe("")
+    expect(result.stderr).toContain('Unsupported syntax in flowchart diagram at line 3: "A --- B"')
+  })
 })

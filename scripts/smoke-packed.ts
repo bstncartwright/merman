@@ -30,13 +30,13 @@ try {
   if (!tarball) throw new Error("bun pack did not return a tarball path")
 
   await Bun.write(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }))
-  await run(["bun", "add", tarball, "@opentui/core@0.2.2"], consumer)
+  await run(["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund", tarball, "@opentui/core@0.2.2"], consumer)
 
   const library = await run(
     [
       "bun",
       "--eval",
-      'import { parse, render } from "@kitlangton/merman"; const parsed = parse("flowchart LR\\n  A --> B"); if (parsed.kind !== "flowchart" || parsed.diagram.nodes.length !== 2) throw new Error("parse smoke failed"); console.log(render("flowchart LR\\n  A --> B", { color: false }))',
+      'import { MermaidSyntaxError, parse, render } from "@kitlangton/merman"; const parsed = parse("flowchart LR\\n  A --> B\\n  classDef bad fill:red"); if (parsed.kind !== "flowchart" || parsed.diagram.nodes.length !== 2) throw new Error("parse smoke failed"); let syntaxRejected = false; try { parse("flowchart LR\\n  A --- B") } catch (error) { syntaxRejected = true; if (!(error instanceof MermaidSyntaxError) || error.lineNumber !== 2) throw new Error("diagnostic smoke failed") } if (!syntaxRejected) throw new Error("diagnostic was not thrown"); console.log(render("flowchart LR\\n  A --> B", { color: false }))',
     ],
     consumer,
   )
