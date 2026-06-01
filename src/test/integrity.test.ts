@@ -9,10 +9,10 @@ describe("package integrity", () => {
     expect(entries).not.toContain("shared")
   })
 
-  test("publishes only the compiled dist + license/readme", async () => {
+  test("publishes only compiled output and package documentation", async () => {
     const packageJson = await Bun.file("package.json").json()
 
-    expect(packageJson.files).toEqual(["bin", "dist", "README.md", "LICENSE"])
+    expect(packageJson.files).toEqual(["bin", "dist", "CHANGELOG.md", "README.md", "LICENSE"])
   })
 
   test("keeps core package-internal", async () => {
