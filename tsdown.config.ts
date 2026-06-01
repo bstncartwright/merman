@@ -10,7 +10,7 @@ const shared = {
 export default defineConfig([
   {
     ...shared,
-    entry: ["src/index.ts"],
+    entry: ["src/index.ts", "src/tui.ts"],
     clean: true,
     unbundle: true,
   },

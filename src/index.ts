@@ -1,7 +1,8 @@
+import { infoStringToFiletype, type MarkdownOptions, type RenderContext } from "@opentui/core"
 import * as Flowchart from "./flowchart/index.js"
 import * as Sequence from "./sequence/index.js"
 import * as State from "./state/index.js"
-import type { MermaidDiagramKind } from "./diagnostics.js"
+import { MermaidSyntaxError as MermaidDiagramSyntaxError, type MermaidDiagramKind } from "./diagnostics.js"
 
 export { Flowchart, Sequence, State }
 export { MermaidSyntaxError } from "./diagnostics.js"
@@ -94,5 +95,32 @@ export function parse(content: string): ParsedDiagram {
       return { kind, diagram: Sequence.parse(content) }
     case "state":
       return { kind, diagram: State.parse(content) }
+  }
+}
+
+/** Create an OpenTUI Markdown node renderer for fenced Mermaid diagrams. */
+export function createMermaidMarkdownRenderer(ctx: RenderContext): NonNullable<MarkdownOptions["renderNode"]> {
+  return (token) => {
+    if (token.type !== "code" || infoStringToFiletype(token.lang ?? "") !== "mermaid") {
+      return undefined
+    }
+
+    const kind = detect(token.text)
+    if (!kind) return undefined
+
+    try {
+      parse(token.text)
+      switch (kind) {
+        case "flowchart":
+          return new Flowchart.Renderable(ctx, { content: token.text })
+        case "sequence":
+          return new Sequence.Renderable(ctx, { content: token.text })
+        case "state":
+          return new State.Renderable(ctx, { content: token.text })
+      }
+    } catch (error) {
+      if (error instanceof MermaidDiagramSyntaxError) return undefined
+      throw error
+    }
   }
 }

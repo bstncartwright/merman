@@ -253,6 +253,40 @@ changes. `Flowchart.Renderable` supports active nodes and edges;
 currently expose message pulse animation without active-selection controls.
 See the demos in [`examples/`](./examples).
 
+### Mermaid fences in Markdown
+
+Use `createMermaidMarkdownRenderer` with OpenTUI's `MarkdownRenderable` to
+replace fenced `mermaid` code blocks with live diagram renderables. Invalid or
+incomplete Mermaid fences fall back to ordinary code blocks.
+
+```ts
+import { MarkdownRenderable } from "@opentui/core"
+import { createMermaidMarkdownRenderer } from "@kitlangton/merman"
+
+const markdown = new MarkdownRenderable(renderer, {
+  content: `# Checkout
+
+\`\`\`mermaid
+flowchart LR
+  Cart --> Payment --> Receipt
+\`\`\``,
+  syntaxStyle,
+  renderNode: createMermaidMarkdownRenderer(renderer),
+})
+
+renderer.root.add(markdown)
+```
+
+For an OpenCode release that exposes language-keyed Markdown block renderers,
+`merman` includes a TUI plugin entrypoint. Add the package to `tui.json` and
+OpenCode resolves its `./tui` export automatically:
+
+```json
+{
+  "plugin": ["@kitlangton/merman"]
+}
+```
+
 ## React
 
 Coming soon as a separate package: `@kitlangton/merman-react`.
