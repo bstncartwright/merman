@@ -16,51 +16,50 @@ exports[`rendering gallery Flowchart / Unicode and crossings 1`] = `
 
 exports[`rendering gallery Flowchart / nested grouping and feedback 1`] = `
 "╭─ Terminal Runtime ─────────────────────────────────────────────────╮
-│                                                         ╭────────╮ │
+│                   ╭──────── retry with a wider label ────────╮     │
+│                   │                                          │     │
+│                   │                                          │     │
+│                   │                                          │     │
+│                   ▼                                     ╭────┴───╮ │
 │ ╭───────╮    ╭────────╮                                 ├────────┤ │
-│ │ Parse ├───▶│ Layout ├─── retry with a wider label ────┤ Render │ │
+│ │ Parse ├───▶│ Layout ├────────────────────────────────▶│ Render │ │
 │ ╰───────╯    ╰────────╯                                 ├────────┤ │
 │                                                         ╰────────╯ │
 ╰────────────────────────────────────────────────────────────────────╯"
 `;
 
 exports[`rendering gallery Flowchart / vertical branching and multiline Unicode 1`] = `
-"                         ╭─────────╮
-                         │ Upload  │
-╭───────────────────────▶│ 界 file │
-│                        ╰────┬────╯
-│                             │
-│          ╭─ valid payload ──┴ invalid payload ╮
-│          │                                    │
-│          ▼                                    ▼
-│     ╭─────────╮                           ╭───────╮
-│     ├─────────┤                         ╭─╯       ╰─╮
-╰─────│ Archive │─ yes ───────────────────┤  Retry?   │
-      ├─────────┤                         ╰─╮       ╭─╯
-      ╰─────────╯                           ╰───┬───╯
-                                                │
-                              ╭────── no ───────╯
-                              │
-                              ▼
-                          ╭──────╮
-                          │ Stop │
-                          ╰──────╯"
+"                   ╭─────────╮
+                   │ Upload  │
+                   │ 界 file │◀─────── yes ────────╮
+                   ╰────┬────╯                     │
+                        │                          │
+     ╭─ valid payload ──┴ invalid payload ╮        │
+     │                                    │        │
+     ▼                                    ▼        │
+╭─────────╮                           ╭───────╮    │
+├─────────┤                         ╭─╯       ╰─╮  │
+│ Archive │                         │  Retry?   ├──╯
+├─────────┤                         ╰─╮       ╭─╯
+╰─────────╯                           ╰───┬───╯
+                                          │
+                        ╭────── no ───────╯
+                        │
+                        ▼
+                    ╭──────╮
+                    │ Stop │
+                    ╰──────╯"
 `;
 
 exports[`rendering gallery Flowchart / reverse horizontal branch and merge 1`] = `
-"╭──────────╮
-│ Rendered │◀─────╮
-╰──────────╯      │
-      ▲           │
-      │           │
-      │           │   ╭────────╮          ╭────────────────╮
-      │           ├───┤ Parser │◀─────────┤ Mermaid Source │
-      │           │   ╰────────╯          ╰────────────────╯
- ╭────┴──╮        │
- ├───────┤        │
- │ Cache │◀───────╯
- ├───────┤
- ╰───────╯"
+"      ╭───────────────────────────────────────╮
+      │                                       │
+      │                                       │
+      ▼               ╭───────╮               │
+╭──────────╮          ├───────┤          ╭────┴───╮          ╭────────────────╮
+│ Rendered │◀─────────┤ Cache │◀─────────┤ Parser │◀─────────┤ Mermaid Source │
+╰──────────╯          ├───────┤          ╰────────╯          ╰────────────────╯
+                      ╰───────╯"
 `;
 
 exports[`rendering gallery Flowchart / simple reverse horizontal edge 1`] = `

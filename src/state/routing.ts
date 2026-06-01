@@ -16,7 +16,9 @@ export type StateTransitionRoutePlan =
   | (StateTransitionRoutePlanBase & { kind: "self" })
   | (StateTransitionRoutePlanBase & { kind: "horizontal-forward"; leftToRight: boolean })
   | (StateTransitionRoutePlanBase & { kind: "bottom-feedback"; railY: number })
+  | (StateTransitionRoutePlanBase & { kind: "bottom-parallel"; railY: number })
   | (StateTransitionRoutePlanBase & { kind: "vertical-elbow"; hasReverse: boolean; offsetConnector: boolean })
+  | (StateTransitionRoutePlanBase & { kind: "side-parallel"; railX: number })
   | (StateTransitionRoutePlanBase & { kind: "vertical" })
 
 export type StateTransitionPathPoint = readonly [number, number]
@@ -108,6 +110,16 @@ export function createStateTransitionRoutePlans(
   feedbackLaneY: number,
 ): StateTransitionRoutePlan[] {
   const statesById = new Map(diagram.states.map((state) => [state.id, state]))
+  const endpointOccurrences = new Map<string, number>()
+  const maxLabelWidth = Math.max(
+    0,
+    ...diagram.transitions.map((transition) => measureStateTransitionLabel(transition.label).width),
+  )
+  const parallelLaneGap = Math.max(
+    3,
+    ...diagram.transitions.map((transition) => measureStateTransitionLabel(transition.label).height + 2),
+  )
+  const sideLaneX = Math.max(0, ...[...bounds.values()].map((bound) => bound.left + bound.width)) + maxLabelWidth + 3
 
   return diagram.transitions.flatMap((transition): StateTransitionRoutePlan[] => {
     const from = bounds.get(transition.from)
@@ -117,8 +129,24 @@ export function createStateTransitionRoutePlans(
     const targetState = statesById.get(transition.to)
     const targetIsChoice = targetState?.kind === "choice" || isHiddenCompositeMarker(targetState)
     const base = { transition, from, to, targetIsChoice }
-    if (diagram.direction !== "LR" && diagram.direction !== "RL") return [{ ...base, kind: "vertical" }]
     if (transition.from === transition.to) return [{ ...base, kind: "self" }]
+    const endpointKey = `${transition.from}\u0000${transition.to}`
+    const parallelIndex = endpointOccurrences.get(endpointKey) ?? 0
+    endpointOccurrences.set(endpointKey, parallelIndex + 1)
+    if (parallelIndex > 0) {
+      if (diagram.direction === "LR" || diagram.direction === "RL") {
+        const firstIsFeedback = isStateHorizontalFeedback(diagram, from, to)
+        return [
+          {
+            ...base,
+            kind: "bottom-parallel",
+            railY: feedbackLaneY + (parallelIndex - (firstIsFeedback ? 0 : 1)) * parallelLaneGap,
+          },
+        ]
+      }
+      return [{ ...base, kind: "side-parallel", railX: sideLaneX + (parallelIndex - 1) * parallelLaneGap }]
+    }
+    if (diagram.direction !== "LR" && diagram.direction !== "RL") return [{ ...base, kind: "vertical" }]
 
     const feedback = isStateHorizontalFeedback(diagram, from, to)
     if (from.centerY !== to.centerY) {
@@ -254,10 +282,10 @@ function outsideBottomY(bounds: BoxBounds): number {
   return bounds.top + bounds.height
 }
 
-function addBottomFeedback(builder: StateTransitionRenderBuilder): void {
+function addBottomLaneTransition(builder: StateTransitionRenderBuilder): void {
   const { from, to, targetIsChoice, transition, railY } = builder.route as Extract<
     StateTransitionRoutePlan,
-    { kind: "bottom-feedback" }
+    { kind: "bottom-feedback" | "bottom-parallel" }
   >
   const sourceX = from.centerX
   const targetX = to.width > 1 ? (sourceX > to.centerX ? to.left + 1 : to.left + to.width - 2) : to.centerX
@@ -295,6 +323,29 @@ function addBottomFeedback(builder: StateTransitionRenderBuilder): void {
       ? Math.min(sourceX, railTargetX) + Math.max(1, Math.floor((Math.abs(sourceX - railTargetX) - metrics.width) / 2))
       : railTargetX + 2
   addLabel(builder, labelX, Math.max(0, railY - metrics.height), transition.label)
+}
+
+function addSideParallelTransition(builder: StateTransitionRenderBuilder): void {
+  const { from, to, targetIsChoice, transition, railX } = builder.route as Extract<
+    StateTransitionRoutePlan,
+    { kind: "side-parallel" }
+  >
+  const startX = from.left + from.width
+  const endX = to.left + to.width
+  const startY = from.centerY
+  const endY = to.centerY
+  const verticalStep: 1 | -1 = startY <= endY ? 1 : -1
+  const startDistance = from.width <= 1 || from.height <= 1 ? 0 : 1
+
+  addRightDeparture(builder, from)
+  addHorizontalFadeRamp(builder, startX, railX - 1, startY, 1, startDistance)
+  addCell(builder, { x: railX, y: startY, char: verticalStep === 1 ? "╮" : "╯" })
+  for (let y = startY + verticalStep; y !== endY; y += verticalStep) addCell(builder, { x: railX, y, char: "│" })
+  addCell(builder, { x: railX, y: endY, char: verticalStep === 1 ? "╯" : "╮" })
+  for (let x = railX - 1; x > endX; x--) addCell(builder, { x, y: endY, char: "─" })
+  addCell(builder, { x: endX, y: endY, ...(targetIsChoice ? { char: "─" } : { arrowDirection: "left" }) })
+  if (targetIsChoice) addPathPoint(builder, to.left, to.top)
+  if (transition.label) addLabel(builder, railX + 2, Math.min(startY, endY) + 1, transition.label)
 }
 
 function innerConnectorX(bounds: BoxBounds, preferredX: number): number {
@@ -402,13 +453,17 @@ function createStateTransitionRenderPlan(route: StateTransitionRoutePlan): State
       addHorizontalForward(builder)
       break
     case "bottom-feedback":
-      addBottomFeedback(builder)
+    case "bottom-parallel":
+      addBottomLaneTransition(builder)
       break
     case "vertical-elbow":
       addVerticalElbowTransition(builder)
       break
     case "vertical":
       addVerticalTransition(builder)
+      break
+    case "side-parallel":
+      addSideParallelTransition(builder)
       break
   }
   return builder
@@ -422,9 +477,9 @@ export function createStateTransitionRenderPlans(
   return createStateTransitionRoutePlans(diagram, bounds, feedbackLaneY).map(createStateTransitionRenderPlan)
 }
 
-function connectionDirection(from: BoxBounds, to: BoxBounds): DiagramDirection {
-  const deltaX = to.centerX - from.centerX
-  const deltaY = to.centerY - from.centerY
+function connectionDirection(from: StateTransitionPathPoint, to: StateTransitionPathPoint): DiagramDirection {
+  const deltaX = to[0] - from[0]
+  const deltaY = to[1] - from[1]
   if (Math.abs(deltaX) >= Math.abs(deltaY) && deltaX !== 0) return deltaX > 0 ? "right" : "left"
   if (deltaY !== 0) return deltaY > 0 ? "down" : "up"
   return "right"
@@ -433,6 +488,7 @@ function connectionDirection(from: BoxBounds, to: BoxBounds): DiagramDirection {
 export function createStateTransitionJunctionPlans(
   diagram: StateVisibleDiagram,
   bounds: ReadonlyMap<string, BoxBounds>,
+  renderPlans: readonly StateTransitionRenderPlan[],
 ): StateTransitionJunctionPlan[] {
   return diagram.states.flatMap((state): StateTransitionJunctionPlan[] => {
     const kind =
@@ -444,21 +500,17 @@ export function createStateTransitionJunctionPlans(
     const connections = new Set<DiagramDirection>()
     const transitions: StateVisibleTransition[] = []
     for (const transition of diagram.transitions) {
+      const renderPlan = renderPlans.find((plan) => plan.route.transition === transition)
       let connected = false
       if (transition.to === state.id) {
-        const sourceBounds = bounds.get(transition.from)
-        if (sourceBounds) connections.add(connectionDirection(stateBounds, sourceBounds))
+        const junction = renderPlan?.path.at(-1)
+        const neighbor = renderPlan?.path.at(-2)
+        if (junction && neighbor) connections.add(connectionDirection(junction, neighbor))
         connected = true
       }
       if (transition.from === state.id) {
-        const targetBounds = bounds.get(transition.to)
-        if (targetBounds) {
-          const feedback =
-            kind === "choice" &&
-            (diagram.direction === "LR" || diagram.direction === "RL") &&
-            isStateHorizontalFeedback(diagram, stateBounds, targetBounds)
-          connections.add(feedback ? "down" : connectionDirection(stateBounds, targetBounds))
-        }
+        const neighbor = renderPlan?.path[0]
+        if (neighbor) connections.add(connectionDirection([stateBounds.left, stateBounds.top], neighbor))
         connected = true
       }
       if (connected) transitions.push(transition)

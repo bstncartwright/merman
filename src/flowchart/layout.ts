@@ -101,12 +101,14 @@ function rankNodes(diagram: FlowchartDiagram): Map<string, number> {
   const ranks = new Map<string, number>()
   const outgoing = new Map<string, string[]>()
   const incoming = new Set<string>()
+  const incomingCounts = new Map(diagram.nodes.map((node) => [node.id, 0]))
 
   for (const edge of diagram.edges) {
     const list = outgoing.get(edge.from) ?? []
     list.push(edge.to)
     outgoing.set(edge.from, list)
     incoming.add(edge.to)
+    incomingCounts.set(edge.to, (incomingCounts.get(edge.to) ?? 0) + 1)
   }
 
   const starts = diagram.nodes.filter((node) => !incoming.has(node.id))
@@ -129,6 +131,22 @@ function rankNodes(diagram: FlowchartDiagram): Map<string, number> {
   for (const node of diagram.nodes) {
     if (!ranks.has(node.id)) ranks.set(node.id, ranks.size)
   }
+
+  const acyclicRanks = new Map<string, number>()
+  const acyclicQueue = diagram.nodes.filter((node) => incomingCounts.get(node.id) === 0).map((node) => node.id)
+  for (const id of acyclicQueue) acyclicRanks.set(id, 0)
+  for (let index = 0; index < acyclicQueue.length; index++) {
+    const id = acyclicQueue[index]!
+    const rank = acyclicRanks.get(id) ?? 0
+    for (const to of outgoing.get(id) ?? []) {
+      acyclicRanks.set(to, Math.max(acyclicRanks.get(to) ?? 0, rank + 1))
+      const remainingIncoming = (incomingCounts.get(to) ?? 0) - 1
+      incomingCounts.set(to, remainingIncoming)
+      if (remainingIncoming === 0) acyclicQueue.push(to)
+    }
+  }
+  for (const [id, rank] of acyclicRanks) ranks.set(id, rank)
+
   return ranks
 }
 

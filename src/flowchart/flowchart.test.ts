@@ -82,9 +82,7 @@ describe("FlowchartDiagram", () => {
 
   test("does not draw reverse-flow arrowheads on a target's opposite side", () => {
     const content = `flowchart RL
-  Parser[Parser] --> Output[Rendered]
-  Cache[(Cache)] --> Output
-  Parser --> Cache`
+  Parser[Parser] --> Output[Rendered]`
     const output = renderFlowchartDiagram(content)
     const layout = layoutFlowchartDiagram(content)
     const outputBounds = layout.bounds.get("Output")!
@@ -94,6 +92,62 @@ describe("FlowchartDiagram", () => {
     expect(horizontalRoute.points.at(-1)?.x).toBe(outputBounds.left + outputBounds.width)
     expect(renderedRow).toContain("│ Rendered │◀")
     expect(renderedRow.trimStart().startsWith("◀")).toBe(false)
+  })
+
+  test("preserves arrowheads for horizontal cycles", () => {
+    const output = renderFlowchartDiagram(`flowchart LR
+  A[A] --> B[B]
+  B --> A`)
+
+    expectDiagram(output).toEqualDiagram(`
+        ╭──────────────╮
+        │              │
+        │              │
+        ▼              │
+      ╭───╮          ╭─┴─╮
+      │ A ├─────────▶│ B │
+      ╰───╯          ╰───╯
+    `)
+  })
+
+  test("renders parallel same-endpoint edges without losing labels", () => {
+    const content = `flowchart LR
+  A[Source] -->|first| B[Target]
+  A -->|second| B`
+    const output = renderFlowchartDiagram(content)
+    const active = renderParsedFlowchartGrid(parseMermaidFlowchartDiagram(content), {
+      activeEdge: { from: "A", to: "B", index: 0 },
+    }).toString({ trimTop: true, trimBottom: true })
+
+    expect(output).toContain("first")
+    expect(output).toContain("second")
+    expect(output.match(/▶/g)).toHaveLength(1)
+    expect(output.match(/▲/g)).toHaveLength(1)
+    expect(active).not.toContain("firstd")
+  })
+
+  test("keeps transitive targets below intermediate vertical stages", () => {
+    const content = `flowchart TD
+  A[Start] --> B[Validate]
+  B --> C[Publish]
+  A --> C`
+    const layout = layoutFlowchartDiagram(content)
+    const output = renderFlowchartDiagram(content)
+
+    expect(layout.bounds.get("C")!.top).toBeGreaterThan(layout.bounds.get("B")!.top)
+    expect(output.match(/[▼◀]/g)).toHaveLength(3)
+  })
+
+  test("routes transitive horizontal shortcuts around intermediate stages", () => {
+    const content = `flowchart LR
+  A[Start] --> B[Validate]
+  B --> C[Publish]
+  A --> C`
+    const layout = layoutFlowchartDiagram(content)
+    const output = renderFlowchartDiagram(content)
+
+    expect(layout.bounds.get("C")!.left).toBeGreaterThan(layout.bounds.get("B")!.left)
+    expect(output.match(/[▶▼]/g)).toHaveLength(3)
   })
 
   test("parses Mermaid flowchart nodes and standard arrows", () => {

@@ -57,4 +57,72 @@ describe("createSequencePlacementPlan", () => {
     expect(group.rightX).toBeGreaterThanOrEqual(message.rightX + 2)
     expect(plan.width).toBeGreaterThan(group.rightX)
   })
+
+  test("keeps external participants outside a group expanded by internal content", () => {
+    const plan = createSequencePlacementPlan(
+      parseMermaidSequenceDiagram(`sequenceDiagram
+  box G
+    participant A
+  end
+  participant B as External
+  A->>A: this self-loop extends underneath the external participant header`),
+    )
+    const group = plan.groups[0]!
+    const external = plan.participants.find((participant) => participant.participant.id === "B")!
+
+    expect(external.headerLeftX).toBeGreaterThan(group.rightX)
+  })
+
+  test("expands group and fragment frames around contained long content", () => {
+    const groupPlan = createSequencePlacementPlan(
+      parseMermaidSequenceDiagram(`sequenceDiagram
+  box Services
+    participant A
+    participant B
+    participant C
+    A->>C: this message text runs far outside of the group container boundary
+  end`),
+    )
+    const group = groupPlan.groups[0]!
+    const groupedMessage = groupPlan.steps.find((step) => step.type === "message")!
+    const groupedMessageRight = groupedMessage.labelX + Math.max(...groupedMessage.labelLines.map(diagramTextWidth)) - 1
+
+    expect(group.rightX).toBeGreaterThan(groupedMessageRight)
+
+    const fragmentPlan = createSequencePlacementPlan(
+      parseMermaidSequenceDiagram(`sequenceDiagram
+  participant A
+  participant B
+  participant C
+  alt lookup
+    A->>C: this non adjacent message is deliberately much wider than the frame
+  end`),
+    )
+    const fragment = fragmentPlan.steps
+      .filter((step) => step.type === "fragment")
+      .find((step) => step.fragment.kind === "alt")!
+    const fragmentMessage = fragmentPlan.steps.find((step) => step.type === "message")!
+    const fragmentMessageRight =
+      fragmentMessage.labelX + Math.max(...fragmentMessage.labelLines.map(diagramTextWidth)) - 1
+
+    expect(fragment.bounds.rightX).toBeGreaterThan(fragmentMessageRight)
+  })
+
+  test("preserves nesting inset when a child fragment has a wide heading", () => {
+    const plan = createSequencePlacementPlan(
+      parseMermaidSequenceDiagram(`sequenceDiagram
+  participant A
+  participant B
+  alt outer
+    loop inner heading wider than outer frame and participant span
+      A->>B: x
+    end
+  end`),
+    )
+    const starts = plan.steps
+      .filter((step) => step.type === "fragment")
+      .filter((step) => step.fragment.kind === "alt" || step.fragment.kind === "loop")
+
+    expect(starts[0]!.bounds.rightX).toBeGreaterThan(starts[1]!.bounds.rightX)
+  })
 })

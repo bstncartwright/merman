@@ -161,6 +161,7 @@ function drawSelfMessagePulse(
   grid: SequenceGrid,
   centerX: number,
   rightX: number,
+  headX: number,
   topRow: number,
   bottomRow: number,
   messageStyle: MessageStyle,
@@ -171,7 +172,7 @@ function drawSelfMessagePulse(
   const topStartX = Math.min(centerX + FADE_STEPS.length, rightX)
   const topLength = rightX - topStartX + 1
   const rightLength = bottomRow - topRow
-  const bottomLength = rightX - centerX
+  const bottomLength = rightX - headX
   const pathLength = topLength + rightLength + bottomLength
 
   drawPulseOnPath(
@@ -309,10 +310,11 @@ function renderSelfMessage(
   for (let x = centerX + 1; x < rightX; x++) {
     setCell(grid, x, bottomRow, SEQUENCE_BORDER.horizontal, style)
   }
-  setCell(grid, message.head === undefined ? centerX : centerX + 1, bottomRow, arrowHeadChar(message.head, -1), style)
+  const headX = message.head === undefined ? centerX : centerX + 1
+  setCell(grid, headX, bottomRow, arrowHeadChar(message.head, -1), style)
   setCell(grid, rightX, bottomRow, SEQUENCE_BORDER.bottomRight, style)
   if (pulseFrame !== undefined) {
-    drawSelfMessagePulse(grid, centerX, rightX, topRow, bottomRow, style, pulseFrame, pulseLength, pulseGap)
+    drawSelfMessagePulse(grid, centerX, rightX, headX, topRow, bottomRow, style, pulseFrame, pulseLength, pulseGap)
   }
 }
 

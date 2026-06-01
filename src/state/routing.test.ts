@@ -63,6 +63,53 @@ describe("createStateTransitionRoutePlans", () => {
     expect(entry?.transition.sourceTransitions).toHaveLength(2)
     expect(activeTransitionIndex(entry!.transition, entry!.transition.sourceTransitions!)).toBe(0)
   })
+
+  test("classifies vertical self-transitions as loops before directional routing", () => {
+    const diagram: StateVisibleDiagram = {
+      direction: "TB",
+      states: [{ id: "Working", label: "Working", kind: "state" }],
+      transitions: [{ from: "Working", to: "Working", label: "retry" }],
+      composites: [],
+      notes: [],
+    }
+
+    expect(
+      createStateTransitionRoutePlans(diagram, new Map([["Working", bounds("Working", 5, 3)]]), 12)[0],
+    ).toMatchObject({
+      kind: "self",
+    })
+  })
+
+  test("allocates separate lanes for parallel transitions", () => {
+    const horizontal: StateVisibleDiagram = {
+      direction: "LR",
+      states: ["A", "B"].map((id) => ({ id, label: id, kind: "state" })),
+      transitions: [
+        { from: "A", to: "B", label: "first" },
+        { from: "A", to: "B", label: "second" },
+      ],
+      composites: [],
+      notes: [],
+    }
+    const vertical = { ...horizontal, direction: "TB" as const }
+    const placements = new Map([
+      ["A", bounds("A", 4, 4)],
+      ["B", bounds("B", 18, 4)],
+    ])
+    const verticalPlacements = new Map([
+      ["A", bounds("A", 4, 4)],
+      ["B", bounds("B", 4, 14)],
+    ])
+
+    expect(createStateTransitionRoutePlans(horizontal, placements, 12).map((plan) => plan.kind)).toEqual([
+      "horizontal-forward",
+      "bottom-parallel",
+    ])
+    expect(createStateTransitionRoutePlans(vertical, verticalPlacements, 22).map((plan) => plan.kind)).toEqual([
+      "vertical",
+      "side-parallel",
+    ])
+  })
 })
 
 describe("createStateTransitionRenderPlans", () => {
@@ -121,16 +168,50 @@ describe("createStateTransitionJunctionPlans", () => {
     }
     const placements = new Map([
       ["A", bounds("A", 4, 4)],
-      ["Decision", bounds("Decision", 14, 4)],
+      ["Decision", { id: "Decision", left: 14, top: 4, width: 1, height: 1, centerX: 14, centerY: 4 }],
       ["B", bounds("B", 24, 4)],
       ["C", bounds("C", 4, 10)],
     ])
 
-    const plan = createStateTransitionJunctionPlans(diagram, placements)[0]!
+    const plan = createStateTransitionJunctionPlans(
+      diagram,
+      placements,
+      createStateTransitionRenderPlans(diagram, placements, 18),
+    )[0]!
 
     expect(plan.kind).toBe("choice")
     expect([...plan.connections]).toEqual(["left", "right", "down"])
     expect(plan.transitions.map((transition) => transition.label)).toEqual(["", "yes", "no"])
+  })
+
+  test("derives a lower choice connection from its routed elbow approach", () => {
+    const diagram: StateVisibleDiagram = {
+      direction: "LR",
+      states: [
+        { id: "Upper", label: "Upper", kind: "state" },
+        { id: "Lower", label: "Lower", kind: "state" },
+        { id: "Decision", label: "Decision", kind: "choice" },
+        { id: "Done", label: "Done", kind: "state" },
+      ],
+      transitions: [
+        { from: "Upper", to: "Decision", label: "" },
+        { from: "Lower", to: "Decision", label: "" },
+        { from: "Decision", to: "Done", label: "" },
+      ],
+      composites: [],
+      notes: [],
+    }
+    const placements = new Map([
+      ["Upper", bounds("Upper", 14, 4)],
+      ["Lower", bounds("Lower", 14, 11)],
+      ["Decision", { ...bounds("Decision", 24, 4), left: 24, top: 4, width: 1, height: 1, centerX: 24, centerY: 4 }],
+      ["Done", bounds("Done", 34, 4)],
+    ])
+    const renderPlans = createStateTransitionRenderPlans(diagram, placements, 18)
+
+    const plan = createStateTransitionJunctionPlans(diagram, placements, renderPlans)[0]!
+
+    expect([...plan.connections]).toContain("down")
   })
 })
 

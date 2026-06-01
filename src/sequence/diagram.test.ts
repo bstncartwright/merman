@@ -3,6 +3,7 @@ import { parseColor } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { expectDiagram } from "../test/diagram.js"
 import { renderSequenceDiagram, renderSequenceDiagramAnsi } from "./diagram.js"
+import { layoutSequenceDiagram } from "./drawing.js"
 import { parseMermaidSequenceDiagram } from "./parser.js"
 import { SequenceDiagramRenderable } from "./renderable.js"
 
@@ -424,6 +425,74 @@ sequenceDiagram
     expect(output).toContain("this note also needs full horizontal room")
   })
 
+  test("keeps long content inside participant groups and fragment frames", () => {
+    const group = renderSequenceDiagram(`sequenceDiagram
+  box Services
+    participant A
+    participant B
+    participant C
+    A->>C: this message text runs far outside of the group container boundary
+  end`)
+    const fragment = renderSequenceDiagram(`sequenceDiagram
+  participant A
+  participant B
+  participant C
+  alt lookup
+    A->>C: this non adjacent message is deliberately much wider than the frame
+  end`)
+
+    const groupMessageRow = group.split("\n").find((line) => line.includes("this message text"))!
+    const fragmentMessageRow = fragment.split("\n").find((line) => line.includes("this non adjacent message"))!
+    expect(groupMessageRow.trimEnd().endsWith("│")).toBe(true)
+    expect(fragmentMessageRow).toContain("this non adjacent message is deliberately much wider than the frame")
+    expect(fragmentMessageRow.match(/│/g)?.length).toBe(3)
+  })
+
+  test("keeps long notes inside groups and nested fragment frames intact", () => {
+    const groupedNote = renderSequenceDiagram(`sequenceDiagram
+  box Services
+    participant A
+    participant B
+    participant C
+    Note over A,C: this note text runs far outside of the group container boundary
+  end`)
+    const fragmentNote = renderSequenceDiagram(`sequenceDiagram
+  participant A
+  participant B
+  participant C
+  alt lookup
+    Note over A,C: this non adjacent note is deliberately much wider than the frame
+  end`)
+    const nested = renderSequenceDiagram(`sequenceDiagram
+  participant A
+  participant B
+  alt outer
+    loop inner heading wider than outer frame and participant span
+      A->>B: x
+    end
+  end`)
+
+    expect(groupedNote).toContain("this note text runs far outside of the group container boundary")
+    expect(fragmentNote).toContain("this non adjacent note is deliberately much wider than the frame")
+    expect(nested).toContain("span ─╮│")
+    expect(nested).toContain("──────╯│")
+  })
+
+  test("does not draw external participants inside groups expanded by self messages", () => {
+    const output = renderSequenceDiagram(`sequenceDiagram
+  box G
+    participant A
+  end
+  participant B as External
+    A->>A: this self-loop extends underneath the external participant header`)
+    const groupBorderRight = output.split("\n")[0]!.lastIndexOf("╮")
+    const lines = output.split("\n")
+    const externalLabelRow = lines.findIndex((line) => line.includes("External"))
+    const externalHeaderLeft = lines[externalLabelRow - 1]!.lastIndexOf("╭")
+
+    expect(externalHeaderLeft).toBeGreaterThan(groupBorderRight)
+  })
+
   test("renders full-height participant group boxes", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram
@@ -702,6 +771,19 @@ sequenceDiagram
       expect(cornerSpan?.fg?.equals(pulseColor)).toBe(false)
     } finally {
       testRenderer.renderer.destroy()
+    }
+  })
+
+  test("does not pulse beyond an explicit self-message arrowhead", () => {
+    const diagram = parseMermaidSequenceDiagram(`sequenceDiagram
+  Service->Service: validate`)
+
+    for (let pulseFrame = 0; pulseFrame < 40; pulseFrame++) {
+      const grid = layoutSequenceDiagram(diagram, { pulseFrame, pulseLength: 5, pulseGap: 100 })
+      const arrowRow = grid.rows.findIndex((row) => row.some((cell) => cell.char === "<"))
+      const arrowX = grid.rows[arrowRow]!.findIndex((cell) => cell.char === "<")
+
+      expect(grid.getCell(arrowX - 1, arrowRow)?.style).toBe("lifeline")
     }
   })
 

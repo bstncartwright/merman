@@ -64,6 +64,56 @@ describe("flowchart routing", () => {
     ])
   })
 
+  test("routes horizontal back-edges above forward lanes", () => {
+    const edge = { from: "B", to: "A", label: "" }
+    const routes = routeFlowchartEdges(
+      diagram("LR", [edge]),
+      new Map([
+        ["A", bounds("A", 0, 0)],
+        ["B", bounds("B", 20, 0)],
+      ]),
+    )
+
+    expect(routes).toEqual([
+      {
+        edge,
+        points: [
+          { x: 22, y: -1 },
+          { x: 22, y: -4 },
+          { x: 2, y: -4 },
+          { x: 2, y: -1 },
+        ],
+      },
+    ])
+  })
+
+  test("routes parallel horizontal edges on independent lanes", () => {
+    const edges = [
+      { from: "A", to: "B", label: "first" },
+      { from: "A", to: "B", label: "second" },
+    ]
+    const routes = routeFlowchartEdges(
+      diagram("LR", edges),
+      new Map([
+        ["A", bounds("A", 0, 0)],
+        ["B", bounds("B", 20, 0)],
+      ]),
+    )
+
+    expect(routes.map((route) => route.points)).toEqual([
+      [
+        { x: 5, y: 1 },
+        { x: 19, y: 1 },
+      ],
+      [
+        { x: 2, y: 3 },
+        { x: 2, y: 6 },
+        { x: 22, y: 6 },
+        { x: 22, y: 3 },
+      ],
+    ])
+  })
+
   test("routes horizontal fan-out through a shared bus lane", () => {
     const edges = [
       { from: "A", to: "B", label: "" },

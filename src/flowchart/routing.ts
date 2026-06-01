@@ -64,6 +64,16 @@ function isVerticalBackEdge(
     : centerCoordinate(to, "y") < centerCoordinate(from, "y")
 }
 
+function isHorizontalBackEdge(
+  from: FlowchartNodeBounds,
+  to: FlowchartNodeBounds,
+  direction: FlowchartDirection,
+): boolean {
+  return direction === "RL"
+    ? centerCoordinate(to, "x") > centerCoordinate(from, "x")
+    : centerCoordinate(to, "x") < centerCoordinate(from, "x")
+}
+
 function horizontalTravel(
   from: FlowchartNodeBounds,
   to: FlowchartNodeBounds,
@@ -99,6 +109,13 @@ function verticalForwardEdgePath(from: FlowchartNodeBounds, to: FlowchartNodeBou
   return orthogonalPath(start, end, { preferredAxis: "y" })
 }
 
+function horizontalBackEdgePath(from: FlowchartNodeBounds, to: FlowchartNodeBounds): FlowchartPoint[] {
+  const start = boundsSidePoint(from, "top")
+  const end = boundsSidePoint(to, "top")
+  const busY = afterFarthestCoordinate([start, end], "y", "up", BUS_CLEARANCE)
+  return pathViaLane(start, lane("y", busY), end)
+}
+
 function horizontalEdgePath(
   from: FlowchartNodeBounds,
   to: FlowchartNodeBounds,
@@ -106,6 +123,8 @@ function horizontalEdgePath(
 ): FlowchartPoint[] {
   const overlapsHorizontally = from.left < to.left + to.width && to.left < from.left + from.width
   if (overlapsHorizontally) return verticalForwardEdgePath(from, to)
+
+  if (isHorizontalBackEdge(from, to, direction)) return horizontalBackEdgePath(from, to)
 
   const travel = horizontalTravel(from, to, direction)
   const startSide = sideForDirection(travel)
@@ -118,6 +137,25 @@ function selfEdgePath(bounds: FlowchartNodeBounds): FlowchartPoint[] {
   const rightLaneX = bounds.left + bounds.width + BUS_CLEARANCE
   const bottomLaneY = bounds.top + bounds.height + 1
   return [start, { x: rightLaneX, y: start.y }, { x: rightLaneX, y: bottomLaneY }, { x: end.x, y: bottomLaneY }, end]
+}
+
+function parallelEdgePath(
+  from: FlowchartNodeBounds,
+  to: FlowchartNodeBounds,
+  direction: FlowchartDirection,
+  laneIndex: number,
+): FlowchartPoint[] {
+  if (!isVerticalDirection(direction)) {
+    const start = boundsSidePoint(from, "bottom")
+    const end = boundsSidePoint(to, "bottom")
+    const busY = Math.max(start.y, end.y) + BUS_CLEARANCE + (laneIndex - 1) * 2
+    return pathViaLane(start, lane("y", busY), end)
+  }
+
+  const start = boundsSidePoint(from, "right")
+  const end = boundsSidePoint(to, "right")
+  const busX = Math.max(start.x, end.x) + BUS_CLEARANCE + (laneIndex - 1) * 2
+  return pathViaLane(start, lane("x", busX), end)
 }
 
 function edgePath(
@@ -270,8 +308,8 @@ function horizontalSubgraphExitJoinY(
   return afterTarget <= outside ? Math.max(Math.min(outside, preferred), afterTarget) : afterTarget
 }
 
-function groupRecords(records: readonly EdgeRecord[], key: (record: EdgeRecord) => string): Map<string, EdgeRecord[]> {
-  const groups = new Map<string, EdgeRecord[]>()
+function groupRecords<Record>(records: readonly Record[], key: (record: Record) => string): Map<string, Record[]> {
+  const groups = new Map<string, Record[]>()
   for (const record of records) {
     const groupKey = key(record)
     const group = groups.get(groupKey) ?? []
@@ -383,6 +421,30 @@ function routeVerticalFanIn(
   }
 }
 
+function routeParallelEdges(
+  diagram: FlowchartDiagram,
+  bounds: Map<string, FlowchartNodeBounds>,
+  directionForEdge: (edge: FlowchartEdge) => FlowchartDirection,
+  leftBoundary: number | undefined,
+  handled: Set<FlowchartEdge>,
+  routes: FlowchartEdgeRoute[],
+): void {
+  const groups = groupRecords(diagram.edges, (edge) => `${directionForEdge(edge)}:${edge.from}:${edge.to}`)
+  for (const edges of groups.values()) {
+    if (edges.length < 2) continue
+    const from = bounds.get(edges[0]!.from)
+    const to = bounds.get(edges[0]!.to)
+    if (!from || !to || from.id === to.id) continue
+    const direction = directionForEdge(edges[0]!)
+    routes.push({ edge: edges[0]!, points: edgePath(from, to, direction, leftBoundary) })
+    handled.add(edges[0]!)
+    for (let index = 1; index < edges.length; index++) {
+      routes.push({ edge: edges[index]!, points: parallelEdgePath(from, to, direction, index) })
+      handled.add(edges[index]!)
+    }
+  }
+}
+
 function routeHorizontalSubgraphExitFanIn(
   diagram: FlowchartDiagram,
   bounds: Map<string, FlowchartNodeBounds>,
@@ -478,6 +540,61 @@ function routeHorizontalSubgraphEntries(
   }
 }
 
+function pathIntersectsBounds(points: readonly FlowchartPoint[], bounds: FlowchartNodeBounds): boolean {
+  const right = bounds.left + bounds.width - 1
+  const bottom = bounds.top + bounds.height - 1
+  for (let index = 1; index < points.length; index++) {
+    const from = points[index - 1]!
+    const to = points[index]!
+    if (from.x === to.x) {
+      if (
+        from.x >= bounds.left &&
+        from.x <= right &&
+        Math.max(from.y, to.y) >= bounds.top &&
+        Math.min(from.y, to.y) <= bottom
+      ) {
+        return true
+      }
+      continue
+    }
+    if (
+      from.y >= bounds.top &&
+      from.y <= bottom &&
+      Math.max(from.x, to.x) >= bounds.left &&
+      Math.min(from.x, to.x) <= right
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+function avoidNodeObstacles(
+  route: FlowchartEdgeRoute,
+  bounds: Map<string, FlowchartNodeBounds>,
+  direction: FlowchartDirection,
+): FlowchartEdgeRoute {
+  const obstacle = [...bounds.values()].some(
+    (bound) => bound.id !== route.edge.from && bound.id !== route.edge.to && pathIntersectsBounds(route.points, bound),
+  )
+  if (!obstacle) return route
+
+  const from = bounds.get(route.edge.from)
+  const to = bounds.get(route.edge.to)
+  if (!from || !to) return route
+  if (isVerticalDirection(direction)) {
+    const start = boundsSidePoint(from, "right")
+    const end = boundsSidePoint(to, "right")
+    const busX = Math.max(...[...bounds.values()].map((bound) => bound.left + bound.width - 1)) + BUS_CLEARANCE
+    return { edge: route.edge, points: pathViaLane(start, lane("x", busX), end) }
+  }
+
+  const start = boundsSidePoint(from, "top")
+  const end = boundsSidePoint(to, "top")
+  const busY = Math.min(...[...bounds.values()].map((bound) => bound.top)) - BUS_CLEARANCE
+  return { edge: route.edge, points: pathViaLane(start, lane("y", busY), end) }
+}
+
 export function routeFlowchartEdges(
   diagram: FlowchartDiagram,
   bounds: Map<string, FlowchartNodeBounds>,
@@ -490,8 +607,10 @@ export function routeFlowchartEdges(
     ? Math.min(...[...bounds.values(), ...subgraphBounds.values()].map((bound) => bound.left))
     : undefined
 
+  routeParallelEdges(diagram, bounds, directionForEdge, leftBoundary, handled, routes)
+
   for (const direction of ["LR", "RL"] satisfies FlowchartDirection[]) {
-    const horizontalEdges = diagram.edges.filter((edge) => directionForEdge(edge) === direction)
+    const horizontalEdges = diagram.edges.filter((edge) => !handled.has(edge) && directionForEdge(edge) === direction)
     if (horizontalEdges.length === 0) continue
     const records = horizontalForwardRecords(horizontalEdges, bounds, direction)
     routeHorizontalFanOut(records, direction, handled, routes)
@@ -502,7 +621,7 @@ export function routeFlowchartEdges(
   routeHorizontalSubgraphEntries(diagram, bounds, subgraphBounds, handled, routes)
 
   for (const direction of ["TD", "TB", "BT"] satisfies FlowchartDirection[]) {
-    const verticalEdges = diagram.edges.filter((edge) => directionForEdge(edge) === direction)
+    const verticalEdges = diagram.edges.filter((edge) => !handled.has(edge) && directionForEdge(edge) === direction)
     if (verticalEdges.length === 0) continue
     const records = verticalForwardRecords(verticalEdges, bounds, direction)
     routeVerticalFanOut(records, direction, handled, routes)
@@ -516,7 +635,7 @@ export function routeFlowchartEdges(
     if (!from || !to) continue
     routes.push({ edge, points: edgePath(from, to, directionForEdge(edge), leftBoundary) })
   }
-  return routes
+  return routes.map((route) => avoidNodeObstacles(route, bounds, directionForEdge(route.edge)))
 }
 
 function sideForOutsidePoint(bounds: FlowchartNodeBounds, sourcePoint: FlowchartPoint): DiagramSide {

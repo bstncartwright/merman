@@ -286,10 +286,11 @@ function drawTransitionJunctionPlans(
   grid: StateGrid,
   diagram: StateDiagram,
   bounds: Map<string, BoxBounds>,
+  renderPlans: readonly StateTransitionRenderPlan[],
   activeState: string | undefined,
   activeTransitions: readonly StateDiagramActiveTransition[],
 ): void {
-  for (const plan of createStateTransitionJunctionPlans(diagram, bounds)) {
+  for (const plan of createStateTransitionJunctionPlans(diagram, bounds, renderPlans)) {
     const active = plan.transitions.some((transition) => isActiveTransition(transition, activeTransitions))
     const style =
       plan.state.id === activeState
@@ -477,10 +478,28 @@ export function layoutStateDiagram(sourceDiagram: StateDiagram, options: StateDi
   allBounds = [...bounds.values(), ...noteBounds]
   const maxX = Math.max(0, ...allBounds.map((bound) => bound.left + bound.width))
   maxY = Math.max(0, ...allBounds.map((bound) => bound.top + bound.height))
+  const transitionPlans = createStateTransitionRenderPlans(diagram, bounds, feedbackLaneY)
   const transitionLabelSizes = diagram.transitions.map((transition) => measureStateTransitionLabel(transition.label))
   const maxTransitionLabelWidth = Math.max(0, ...transitionLabelSizes.map((size) => size.width))
   const maxTransitionLabelLines = Math.max(0, ...transitionLabelSizes.map((size) => size.height))
-  const grid = makeGrid(maxX + Math.max(24, maxTransitionLabelWidth + 4), maxY + 8 + maxTransitionLabelLines)
+  const transitionRight = Math.max(
+    maxX,
+    ...transitionPlans.flatMap((plan) => [
+      ...plan.cells.map((cell) => cell.x + 1),
+      ...(plan.label ? [plan.label.x + measureStateTransitionLabel(plan.route.transition.label).width] : []),
+    ]),
+  )
+  const transitionBottom = Math.max(
+    maxY,
+    ...transitionPlans.flatMap((plan) => [
+      ...plan.cells.map((cell) => cell.y + 1),
+      ...(plan.label ? [plan.label.y + plan.label.lines.length] : []),
+    ]),
+  )
+  const grid = makeGrid(
+    Math.max(maxX + Math.max(24, maxTransitionLabelWidth + 4), transitionRight + 2),
+    Math.max(maxY + 8 + maxTransitionLabelLines, transitionBottom + 2),
+  )
   const activeTransitionPaths: Array<readonly StateTransitionPathPoint[] | undefined> = []
 
   for (const composite of diagram.composites) {
@@ -502,7 +521,7 @@ export function layoutStateDiagram(sourceDiagram: StateDiagram, options: StateDi
     drawBox(grid, state, bound, size.lines, options.activeState === state.id, borderStyle)
   }
 
-  for (const plan of createStateTransitionRenderPlans(diagram, bounds, feedbackLaneY)) {
+  for (const plan of transitionPlans) {
     const transition = plan.route.transition
     const fadeSource = transitionFadeSource(statesById, transition, options.activeState)
     const activeIndex = activeTransitionIndex(transition, activeTransitions)
@@ -519,7 +538,7 @@ export function layoutStateDiagram(sourceDiagram: StateDiagram, options: StateDi
     if (active && plan.path.length > 0) activeTransitionPaths[activeIndex] = plan.path
   }
 
-  drawTransitionJunctionPlans(grid, diagram, bounds, options.activeState, activeTransitions)
+  drawTransitionJunctionPlans(grid, diagram, bounds, transitionPlans, options.activeState, activeTransitions)
   applyActiveTransitionMask(grid, activeTransitionPaths, activeTransitionProgress, activeTransitionMode)
   applyActiveTransitionPulse(grid, pulseFrame, pulseProgress, pulseLength, pulseGap, activeTransitionPaths)
 

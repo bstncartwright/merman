@@ -373,6 +373,51 @@ stateDiagram-v2
     `)
   })
 
+  test("connects lower routed branches into choice junctions", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction LR
+  state Decision <<choice>>
+  [*] --> Fork
+  Fork --> Upper
+  Fork --> Lower
+  Upper --> Decision
+  Lower --> Decision
+  Decision --> Done
+  Done --> [*]`)
+
+    expect(output).toContain("Upper ├─────────────┬────────────▶│ Done")
+  })
+
+  test("renders self transitions as loops in vertical diagrams", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction TB
+  Working --> Working: retry`)
+
+    expectDiagram(output).toEqualDiagram(`
+      ╭─────────╮
+      │ Working │
+      ╰──┬──────╯
+         │    ▲ retry
+         ╰────╯
+    `)
+  })
+
+  test("renders parallel transitions without losing labels", () => {
+    const horizontal = renderStateDiagram(`stateDiagram-v2
+  direction LR
+  A --> B: first
+  A --> B: second`)
+    const vertical = renderStateDiagram(`stateDiagram-v2
+  direction TB
+  A --> B: first
+  A --> B: second`)
+
+    expect(horizontal).toContain("first")
+    expect(horizontal).toContain("second")
+    expect(vertical).toContain("first")
+    expect(vertical).toContain("second")
+  })
+
   test("renders composite state containers", () => {
     const output = renderStateDiagram(`
 stateDiagram-v2
