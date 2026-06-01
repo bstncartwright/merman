@@ -110,6 +110,62 @@ describe("createStateTransitionRoutePlans", () => {
       "side-parallel",
     ])
   })
+
+  test("routes interleaving independent feedback transitions on opposite sides", () => {
+    const diagram: StateVisibleDiagram = {
+      direction: "LR",
+      states: ["A", "B", "C", "D"].map((id) => ({ id, label: id, kind: "state" })),
+      transitions: [
+        { from: "A", to: "B", label: "advance" },
+        { from: "B", to: "C", label: "continue" },
+        { from: "C", to: "D", label: "finish" },
+        { from: "C", to: "A", label: "reset A" },
+        { from: "D", to: "B", label: "reset B" },
+      ],
+      composites: [],
+      notes: [],
+    }
+    const placements = new Map([
+      ["A", bounds("A", 4, 4)],
+      ["B", bounds("B", 14, 4)],
+      ["C", bounds("C", 24, 4)],
+      ["D", bounds("D", 34, 4)],
+    ])
+    const plans = createStateTransitionRenderPlans(diagram, placements, 12).filter((plan) =>
+      plan.route.transition.label.startsWith("reset"),
+    )
+
+    expect(plans.map((plan) => plan.route.kind)).toEqual(["bottom-feedback", "top-feedback"])
+    const firstCells = new Set(plans[0]!.path.map(([x, y]) => `${x}:${y}`))
+    expect(plans[1]!.path.some(([x, y]) => firstCells.has(`${x}:${y}`))).toBe(false)
+  })
+
+  test("routes nested same-side feedback transitions from inner to outer rails", () => {
+    const diagram: StateVisibleDiagram = {
+      direction: "LR",
+      states: ["A", "B", "C", "D"].map((id) => ({ id, label: id, kind: "state" })),
+      transitions: [
+        { from: "D", to: "A", label: "outer" },
+        { from: "C", to: "B", label: "inner" },
+      ],
+      composites: [],
+      notes: [],
+    }
+    const placements = new Map([
+      ["A", bounds("A", 4, 4)],
+      ["B", bounds("B", 14, 4)],
+      ["C", bounds("C", 24, 4)],
+      ["D", bounds("D", 34, 4)],
+    ])
+    const plans = createStateTransitionRenderPlans(diagram, placements, 12)
+    const outer = plans.find((plan) => plan.route.transition.label === "outer")!
+    const inner = plans.find((plan) => plan.route.transition.label === "inner")!
+    const outerCells = new Set(outer.path.map(([x, y]) => `${x}:${y}`))
+
+    expect(outer.route).toMatchObject({ kind: "bottom-feedback", railY: 15 })
+    expect(inner.route).toMatchObject({ kind: "bottom-feedback", railY: 12 })
+    expect(inner.path.some(([x, y]) => outerCells.has(`${x}:${y}`))).toBe(false)
+  })
 })
 
 describe("createStateTransitionRenderPlans", () => {

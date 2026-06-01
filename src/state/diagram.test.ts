@@ -418,6 +418,58 @@ stateDiagram-v2
     expect(vertical).toContain("second")
   })
 
+  test("keeps independent overlapping feedback labels and paths distinct", () => {
+    const content = (direction: "LR" | "RL") => `stateDiagram-v2
+  direction ${direction}
+  A --> B: advance
+  B --> C: continue
+  C --> D: finish
+  C --> A: reset A
+  D --> B: reset B`
+
+    for (const direction of ["LR", "RL"] as const) {
+      const output = renderStateDiagram(content(direction))
+      expect(output).toContain("reset A")
+      expect(output).toContain("reset B")
+      expect(output).not.toContain("res│t")
+    }
+  })
+
+  test("keeps independent internal feedback paths inside their composite frame", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction LR
+  state Runtime {
+    A --> B: advance
+    B --> C: continue
+    C --> D: finish
+    C --> A: reset A
+    D --> B: reset B
+  }`)
+    const lines = output.split("\n")
+    const frameTop = lines.findIndex((line) => line.includes("Runtime"))
+    const upperFeedback = lines.findIndex((line) => line.includes("reset B"))
+
+    expect(upperFeedback).toBeGreaterThan(frameTop)
+    expect(output).toContain("reset A")
+    expect(output).not.toContain("res│t")
+  })
+
+  test("places notes away from independent feedback corridors", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction LR
+  A --> B: advance
+  B --> C: continue
+  C --> D: finish
+  C --> A: reset A
+  D --> B: reset B
+  note right of B : note beside B`)
+
+    expect(output).toContain("note beside B")
+    expect(output).toContain("reset B")
+    expect(output).not.toContain("╭─║")
+    expect(output).not.toContain("║──")
+  })
+
   test("renders composite state containers", () => {
     const output = renderStateDiagram(`
 stateDiagram-v2

@@ -1,6 +1,11 @@
 import { translateDiagramBounds } from "../core/geometry.js"
 import { diagramTextWidth, measureDiagramTextBox, splitDiagramLines } from "../core/text.js"
-import { hasReverseTransition, isStateHorizontalFeedback, measureStateTransitionLabel } from "./routing.js"
+import {
+  hasReverseTransition,
+  isStateHorizontalFeedback,
+  measureStateTransitionLabel,
+  type StateTransitionRenderPlan,
+} from "./routing.js"
 import type {
   StateDiagram,
   StateDiagramCompositeState,
@@ -617,5 +622,35 @@ export function expandCompositeBoundsForFeedback(
     const bottom = Math.max(compositeBound.top + compositeBound.height, feedbackLaneY + 2)
     compositeBound.height = bottom - compositeBound.top
     compositeBound.centerY = compositeBound.top + Math.floor(compositeBound.height / 2)
+  }
+}
+
+export function expandCompositeBoundsForInternalTransitions(
+  diagram: StateDiagram,
+  compositeBounds: Map<string, StateDiagramBoxBounds>,
+  transitionPlans: readonly StateTransitionRenderPlan[],
+): void {
+  const statesById = new Map(diagram.states.map((state) => [state.id, state]))
+  const compositesById = new Map(diagram.composites.map((composite) => [composite.id, composite]))
+
+  for (const composite of diagram.composites) {
+    const bound = compositeBounds.get(composite.id)
+    if (!bound) continue
+    const internalPlans = transitionPlans.filter(
+      (plan) =>
+        belongsToComposite(plan.route.transition.from, composite.id, statesById, compositesById) &&
+        belongsToComposite(plan.route.transition.to, composite.id, statesById, compositesById),
+    )
+    const occupiedYs = internalPlans.flatMap((plan) => [
+      ...plan.cells.map((cell) => cell.y),
+      ...(plan.label ? plan.label.lines.map((_, index) => plan.label!.y + index) : []),
+    ])
+    if (occupiedYs.length === 0) continue
+
+    const top = Math.min(bound.top, Math.min(...occupiedYs) - 1)
+    const bottom = Math.max(bound.top + bound.height, Math.max(...occupiedYs) + 2)
+    bound.top = top
+    bound.height = bottom - top
+    bound.centerY = bound.top + Math.floor(bound.height / 2)
   }
 }

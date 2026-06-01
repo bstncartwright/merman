@@ -13,6 +13,7 @@ import {
 import {
   createStateDiagramLayout,
   expandCompositeBoundsForFeedback,
+  expandCompositeBoundsForInternalTransitions,
   type StateDiagramBoxBounds as BoxBounds,
   type StateDiagramNoteBounds as StateNoteBounds,
 } from "./layout.js"
@@ -62,6 +63,18 @@ interface TransitionDrawContext {
   active: boolean
   fadeFromSource: boolean
   sourceStateId: string
+}
+
+function translateTransitionPlans(
+  plans: readonly StateTransitionRenderPlan[],
+  dy: number,
+): StateTransitionRenderPlan[] {
+  return plans.map((plan) => ({
+    ...plan,
+    cells: plan.cells.map((cell) => ({ ...cell, y: cell.y + dy })),
+    path: plan.path.map(([x, y]) => [x, y + dy]),
+    label: plan.label ? { ...plan.label, y: plan.label.y + dy } : undefined,
+  }))
 }
 
 const ACTIVE_TRANSITION_FRONTIER_ACTIVE_SIDE = 2
@@ -473,12 +486,41 @@ export function layoutStateDiagram(sourceDiagram: StateDiagram, options: StateDi
   const statesById = new Map(diagram.states.map((state) => [state.id, state]))
   let allBounds = [...bounds.values(), ...noteBounds]
   let maxY = Math.max(0, ...allBounds.map((bound) => bound.top + bound.height))
-  const feedbackLaneY = maxY + 3
+  let feedbackLaneY = maxY + 3
+  let feedbackTopY = Math.min(0, ...allBounds.map((bound) => bound.top)) - 3
   expandCompositeBoundsForFeedback(diagram, bounds, compositeBounds, feedbackLaneY)
+  let transitionPlans = createStateTransitionRenderPlans(diagram, bounds, feedbackLaneY, feedbackTopY)
+  const transitionTop = Math.min(
+    0,
+    ...transitionPlans.flatMap((plan) => [...plan.cells.map((cell) => cell.y), ...(plan.label ? [plan.label.y] : [])]),
+  )
+  if (transitionTop < 0) {
+    const dy = -transitionTop
+    for (const bound of new Set([...bounds.values(), ...noteBounds])) {
+      bound.top += dy
+      bound.centerY += dy
+    }
+    feedbackLaneY += dy
+    feedbackTopY += dy
+    transitionPlans = createStateTransitionRenderPlans(diagram, bounds, feedbackLaneY, feedbackTopY)
+  }
+  expandCompositeBoundsForInternalTransitions(diagram, compositeBounds, transitionPlans)
+  const contentTop = Math.min(
+    0,
+    ...[...bounds.values(), ...noteBounds].map((bound) => bound.top),
+    ...transitionPlans.flatMap((plan) => [...plan.cells.map((cell) => cell.y), ...(plan.label ? [plan.label.y] : [])]),
+  )
+  if (contentTop < 0) {
+    const dy = -contentTop
+    for (const bound of new Set([...bounds.values(), ...noteBounds])) {
+      bound.top += dy
+      bound.centerY += dy
+    }
+    transitionPlans = translateTransitionPlans(transitionPlans, dy)
+  }
   allBounds = [...bounds.values(), ...noteBounds]
   const maxX = Math.max(0, ...allBounds.map((bound) => bound.left + bound.width))
   maxY = Math.max(0, ...allBounds.map((bound) => bound.top + bound.height))
-  const transitionPlans = createStateTransitionRenderPlans(diagram, bounds, feedbackLaneY)
   const transitionLabelSizes = diagram.transitions.map((transition) => measureStateTransitionLabel(transition.label))
   const maxTransitionLabelWidth = Math.max(0, ...transitionLabelSizes.map((size) => size.width))
   const maxTransitionLabelLines = Math.max(0, ...transitionLabelSizes.map((size) => size.height))

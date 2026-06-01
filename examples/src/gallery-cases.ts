@@ -92,6 +92,17 @@ export const GALLERY_CASES: readonly GalleryCase[] = [
   C --> B: back`,
   },
   {
+    title: "State / independent overlapping feedback paths",
+    kind: "state",
+    content: `stateDiagram-v2
+  direction LR
+  A --> B: advance
+  B --> C: continue
+  C --> D: finish
+  C --> A: reset A
+  D --> B: reset B`,
+  },
+  {
     title: "State / multiline transition labels",
     kind: "state",
     content: `stateDiagram-v2

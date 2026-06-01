@@ -16,6 +16,7 @@ export type StateTransitionRoutePlan =
   | (StateTransitionRoutePlanBase & { kind: "self" })
   | (StateTransitionRoutePlanBase & { kind: "horizontal-forward"; leftToRight: boolean })
   | (StateTransitionRoutePlanBase & { kind: "bottom-feedback"; railY: number })
+  | (StateTransitionRoutePlanBase & { kind: "top-feedback"; railY: number })
   | (StateTransitionRoutePlanBase & { kind: "bottom-parallel"; railY: number })
   | (StateTransitionRoutePlanBase & { kind: "vertical-elbow"; hasReverse: boolean; offsetConnector: boolean })
   | (StateTransitionRoutePlanBase & { kind: "side-parallel"; railX: number })
@@ -79,6 +80,93 @@ export function isStateHorizontalFeedback(
   return to.centerX < from.centerX
 }
 
+interface FeedbackAllocation {
+  side: "bottom" | "top"
+  railY: number
+}
+
+interface AllocatedFeedbackInterval extends FeedbackAllocation {
+  left: number
+  right: number
+  lane: number
+}
+
+interface FeedbackInterval {
+  transition: StateVisibleTransition
+  left: number
+  right: number
+  side?: "bottom" | "top"
+}
+
+function feedbackIntervalsOverlap(
+  left: { left: number; right: number },
+  right: { left: number; right: number },
+): boolean {
+  return left.left <= right.right && right.left <= left.right
+}
+
+function feedbackIntervalsCross(
+  left: { left: number; right: number },
+  right: { left: number; right: number },
+): boolean {
+  return (
+    (left.left < right.left && right.left < left.right && left.right < right.right) ||
+    (right.left < left.left && left.left < right.right && right.right < left.right)
+  )
+}
+
+function createFeedbackAllocations(
+  diagram: StateVisibleDiagram,
+  bounds: ReadonlyMap<string, BoxBounds>,
+  feedbackLaneY: number,
+  laneGap: number,
+  feedbackTopY?: number,
+): ReadonlyMap<StateVisibleTransition, FeedbackAllocation> {
+  if (diagram.direction !== "LR" && diagram.direction !== "RL") return new Map()
+  const allocations = new Map<StateVisibleTransition, FeedbackAllocation>()
+  const sidedIntervals: Record<"bottom" | "top", FeedbackInterval[]> = { bottom: [], top: [] }
+  const endpointKeys = new Set<string>()
+  const topLaneY = feedbackTopY ?? Math.min(...[...bounds.values()].map((bound) => bound.top)) - 3
+  const intervals: FeedbackInterval[] = []
+
+  for (const transition of diagram.transitions) {
+    const endpointKey = `${transition.from}\u0000${transition.to}`
+    if (endpointKeys.has(endpointKey)) continue
+    endpointKeys.add(endpointKey)
+    const from = bounds.get(transition.from)
+    const to = bounds.get(transition.to)
+    if (!from || !to || transition.from === transition.to || !isStateHorizontalFeedback(diagram, from, to)) continue
+    if (from.centerY !== to.centerY && !(from.centerY > to.centerY)) continue
+
+    intervals.push({ transition, left: Math.min(from.centerX, to.centerX), right: Math.max(from.centerX, to.centerX) })
+  }
+
+  for (const interval of intervals) {
+    const side = (["bottom", "top"] as const).find(
+      (candidate) => !sidedIntervals[candidate].some((existing) => feedbackIntervalsCross(existing, interval)),
+    )
+    if (!side) continue
+    interval.side = side
+    sidedIntervals[side].push(interval)
+  }
+
+  for (const side of ["bottom", "top"] as const) {
+    const occupied: AllocatedFeedbackInterval[] = []
+    const intervalsByWidth = [...sidedIntervals[side]].sort(
+      (left, right) => left.right - left.left - (right.right - right.left),
+    )
+    for (const interval of intervalsByWidth) {
+      let lane = 0
+      while (occupied.some((existing) => existing.lane === lane && feedbackIntervalsOverlap(existing, interval))) lane++
+      const railY = side === "bottom" ? feedbackLaneY + lane * laneGap : topLaneY - lane * laneGap
+      occupied.push({ ...interval, side, lane, railY })
+      allocations.set(interval.transition, { side, railY })
+    }
+  }
+
+  return allocations
+}
+
 function hasOpposingTopConnector(
   diagram: StateVisibleDiagram,
   transition: StateVisibleTransition,
@@ -108,6 +196,7 @@ export function createStateTransitionRoutePlans(
   diagram: StateVisibleDiagram,
   bounds: ReadonlyMap<string, BoxBounds>,
   feedbackLaneY: number,
+  feedbackTopY?: number,
 ): StateTransitionRoutePlan[] {
   const statesById = new Map(diagram.states.map((state) => [state.id, state]))
   const endpointOccurrences = new Map<string, number>()
@@ -120,6 +209,7 @@ export function createStateTransitionRoutePlans(
     ...diagram.transitions.map((transition) => measureStateTransitionLabel(transition.label).height + 2),
   )
   const sideLaneX = Math.max(0, ...[...bounds.values()].map((bound) => bound.left + bound.width)) + maxLabelWidth + 3
+  const feedbackAllocations = createFeedbackAllocations(diagram, bounds, feedbackLaneY, parallelLaneGap, feedbackTopY)
 
   return diagram.transitions.flatMap((transition): StateTransitionRoutePlan[] => {
     const from = bounds.get(transition.from)
@@ -149,6 +239,16 @@ export function createStateTransitionRoutePlans(
     if (diagram.direction !== "LR" && diagram.direction !== "RL") return [{ ...base, kind: "vertical" }]
 
     const feedback = isStateHorizontalFeedback(diagram, from, to)
+    const feedbackAllocation = feedbackAllocations.get(transition)
+    if (feedbackAllocation) {
+      return [
+        {
+          ...base,
+          kind: feedbackAllocation.side === "bottom" ? "bottom-feedback" : "top-feedback",
+          railY: feedbackAllocation.railY,
+        },
+      ]
+    }
     if (from.centerY !== to.centerY) {
       if (from.centerY > to.centerY && feedback) return [{ ...base, kind: "bottom-feedback", railY: feedbackLaneY }]
       const hasReverse = hasReverseTransition(diagram, transition)
@@ -282,6 +382,10 @@ function outsideBottomY(bounds: BoxBounds): number {
   return bounds.top + bounds.height
 }
 
+function outsideTopY(bounds: BoxBounds): number {
+  return bounds.top - 1
+}
+
 function addBottomLaneTransition(builder: StateTransitionRenderBuilder): void {
   const { from, to, targetIsChoice, transition, railY } = builder.route as Extract<
     StateTransitionRoutePlan,
@@ -323,6 +427,39 @@ function addBottomLaneTransition(builder: StateTransitionRenderBuilder): void {
       ? Math.min(sourceX, railTargetX) + Math.max(1, Math.floor((Math.abs(sourceX - railTargetX) - metrics.width) / 2))
       : railTargetX + 2
   addLabel(builder, labelX, Math.max(0, railY - metrics.height), transition.label)
+}
+
+function addTopFeedbackTransition(builder: StateTransitionRenderBuilder): void {
+  const { from, to, targetIsChoice, transition, railY } = builder.route as Extract<
+    StateTransitionRoutePlan,
+    { kind: "top-feedback" }
+  >
+  const sourceX = from.centerX
+  const targetX = to.width > 1 ? (sourceX > to.centerX ? to.left + to.width - 2 : to.left + 1) : to.centerX
+  const sourceTopY = outsideTopY(from)
+  const targetTopY = outsideTopY(to)
+  const startDistance = from.width <= 1 || from.height <= 1 ? 0 : 1
+
+  addTopDeparture(builder, from, sourceX)
+  addVerticalFadeRamp(builder, sourceX, sourceTopY, railY + 1, -1, startDistance)
+  addCell(builder, { x: sourceX, y: railY, char: sourceX > targetX ? "╮" : "╭" })
+  if (sourceX !== targetX) {
+    const horizontalStep = sourceX < targetX ? 1 : -1
+    for (let x = sourceX + horizontalStep; x !== targetX; x += horizontalStep)
+      addCell(builder, { x, y: railY, char: "─" })
+  }
+  addCell(builder, { x: targetX, y: railY, char: sourceX > targetX ? "╭" : "╮" })
+  for (let y = railY + 1; y < targetTopY; y++) addCell(builder, { x: targetX, y, char: "│" })
+  addCell(builder, { x: targetX, y: targetTopY, ...(targetIsChoice ? { char: "│" } : { arrowDirection: "down" }) })
+  if (targetIsChoice) addPathPoint(builder, to.left, to.top)
+  if (!transition.label) return
+  const metrics = measureStateTransitionLabel(transition.label)
+  const horizontalRoom = Math.abs(sourceX - targetX) - 2
+  const labelX =
+    metrics.width <= horizontalRoom
+      ? Math.min(sourceX, targetX) + Math.max(1, Math.floor((Math.abs(sourceX - targetX) - metrics.width) / 2))
+      : targetX + 2
+  addLabel(builder, labelX, railY - metrics.height, transition.label)
 }
 
 function addSideParallelTransition(builder: StateTransitionRenderBuilder): void {
@@ -456,6 +593,9 @@ function createStateTransitionRenderPlan(route: StateTransitionRoutePlan): State
     case "bottom-parallel":
       addBottomLaneTransition(builder)
       break
+    case "top-feedback":
+      addTopFeedbackTransition(builder)
+      break
     case "vertical-elbow":
       addVerticalElbowTransition(builder)
       break
@@ -473,8 +613,11 @@ export function createStateTransitionRenderPlans(
   diagram: StateVisibleDiagram,
   bounds: ReadonlyMap<string, BoxBounds>,
   feedbackLaneY: number,
+  feedbackTopY?: number,
 ): StateTransitionRenderPlan[] {
-  return createStateTransitionRoutePlans(diagram, bounds, feedbackLaneY).map(createStateTransitionRenderPlan)
+  return createStateTransitionRoutePlans(diagram, bounds, feedbackLaneY, feedbackTopY).map(
+    createStateTransitionRenderPlan,
+  )
 }
 
 function connectionDirection(from: StateTransitionPathPoint, to: StateTransitionPathPoint): DiagramDirection {

@@ -361,3 +361,17 @@ exports[`rendering gallery Sequence / long self-call and spanning note 1`] = `
      ◀───────────────────────────────────────────┤
      │                                           │"
 `;
+
+exports[`rendering gallery State / independent overlapping feedback paths 1`] = `
+"                                   reset B
+                     ╭──────────────────────────────────╮
+                     │                                  │
+                     ▼                                  │
+╭───╮  advance    ╭───╮  continue   ╭───╮   finish    ╭─┴─╮
+│ A ├────────────▶│ B ├────────────▶│ C ├────────────▶│ D │
+╰───╯             ╰───╯             ╰─┬─╯             ╰───╯
+ ▲                                    │
+ │                                    │
+ │              reset A               │
+ ╰────────────────────────────────────╯"
+`;
