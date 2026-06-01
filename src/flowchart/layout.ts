@@ -5,7 +5,7 @@ import {
   segmentSpan,
   translateDiagramBounds,
 } from "../core/geometry.js"
-import { diagramTextWidth, measureDiagramTextBox } from "../core/text.js"
+import { diagramTextWidth, measureDiagramTextBox, splitDiagramLines } from "../core/text.js"
 import {
   flowchartEdgeLabelLayout,
   flowchartHorizontalLabelRankGap,
@@ -62,6 +62,30 @@ function horizontalRankGaps(
     const labelGap = flowchartHorizontalLabelRankGap(flowchartLabelWidth(edge.label, visualLength))
     for (let index = Math.min(fromIndex, toIndex); index < Math.max(fromIndex, toIndex); index++) {
       gaps[index] = Math.max(gaps[index]!, labelGap)
+    }
+  }
+
+  return gaps
+}
+
+function verticalRankGaps(
+  diagram: FlowchartDiagram,
+  normalizedRanks: ReadonlyMap<string, number>,
+  rankKeys: readonly number[],
+  fallback: number,
+): number[] {
+  const gaps = Array.from({ length: Math.max(0, rankKeys.length - 1) }, () => fallback)
+  const rankIndexes = new Map(rankKeys.map((rank, index) => [rank, index]))
+
+  for (const edge of diagram.edges) {
+    if (!edge.label) continue
+    const fromIndex = rankIndexes.get(normalizedRanks.get(edge.from) ?? -1)
+    const toIndex = rankIndexes.get(normalizedRanks.get(edge.to) ?? -1)
+    if (fromIndex === undefined || toIndex === undefined || fromIndex === toIndex) continue
+
+    const labelHeight = splitDiagramLines(edge.label).length
+    for (let index = Math.min(fromIndex, toIndex); index < Math.max(fromIndex, toIndex); index++) {
+      gaps[index] = Math.max(gaps[index]!, labelHeight + 2)
     }
   }
 
@@ -172,11 +196,14 @@ function subgraphBoundFromChildren(
   label: string,
   children: readonly FlowchartBounds[],
 ): FlowchartSubgraphBounds {
+  const labelLines = splitDiagramLines(label)
+  const labelHeight = labelLines.length
   let left = Math.min(...children.map((child) => child.left)) - SUBGRAPH_PADDING_X
-  const top = Math.min(...children.map((child) => child.top)) - SUBGRAPH_PADDING_TOP
+  const top = Math.min(...children.map((child) => child.top)) - Math.max(SUBGRAPH_PADDING_TOP, labelHeight)
   let right = Math.max(...children.map((child) => child.left + child.width)) + SUBGRAPH_PADDING_X
-  const bottom = Math.max(...children.map((child) => child.top + child.height)) + SUBGRAPH_PADDING_BOTTOM
-  const minWidth = visualLength(label) + 5
+  const bottom =
+    Math.max(...children.map((child) => child.top + child.height)) + Math.max(SUBGRAPH_PADDING_BOTTOM, labelHeight)
+  const minWidth = Math.max(...labelLines.map(visualLength)) + 5
 
   if (right - left < minWidth) {
     const extra = minWidth - (right - left)
@@ -204,10 +231,12 @@ function spansOverlap(leftStart: number, leftEnd: number, rightStart: number, ri
 }
 
 function labelSlot(bounds: FlowchartSubgraphBounds, side: FlowchartSubgraphBounds["labelSide"]): FlowchartBounds {
+  const lines = splitDiagramLines(bounds.label)
   const left = bounds.left + 2
-  const top = side === "top" ? bounds.top : bounds.top + bounds.height - 1
-  const width = visualLength(` ${bounds.label} `)
-  return { left, top, width, height: 1, centerX: left + Math.floor(width / 2), centerY: top }
+  const height = lines.length
+  const top = side === "top" ? bounds.top : bounds.top + bounds.height - height
+  const width = Math.max(...lines.map((line) => visualLength(` ${line} `)))
+  return { left, top, width, height, centerX: left + Math.floor(width / 2), centerY: top + Math.floor(height / 2) }
 }
 
 function segmentOverlapsSlot(
@@ -219,11 +248,20 @@ function segmentOverlapsSlot(
   if (!segment) return false
 
   const slotRight = slot.left + slot.width - 1
+  const slotBottom = slot.top + slot.height - 1
   const span = segmentSpan(segment)
   if (segment.axis === "x") {
-    return segment.from.y === slot.top && spansOverlap(span.start, span.end, slot.left, slotRight)
+    return (
+      segment.from.y >= slot.top &&
+      segment.from.y <= slotBottom &&
+      spansOverlap(span.start, span.end, slot.left, slotRight)
+    )
   }
-  return segment.from.x >= slot.left && segment.from.x <= slotRight && slot.top >= span.start && slot.top <= span.end
+  return (
+    segment.from.x >= slot.left &&
+    segment.from.x <= slotRight &&
+    spansOverlap(span.start, span.end, slot.top, slotBottom)
+  )
 }
 
 function routeOverlapsSlot(route: FlowchartEdgeRoute, slot: FlowchartBounds): boolean {
@@ -232,7 +270,17 @@ function routeOverlapsSlot(route: FlowchartEdgeRoute, slot: FlowchartBounds): bo
   }
 
   const routeLabelBounds = labelBounds(route)
-  if (!routeLabelBounds || routeLabelBounds.top !== slot.top) return false
+  if (
+    !routeLabelBounds ||
+    !spansOverlap(
+      routeLabelBounds.top,
+      routeLabelBounds.top + routeLabelBounds.height - 1,
+      slot.top,
+      slot.top + slot.height - 1,
+    )
+  ) {
+    return false
+  }
   return spansOverlap(
     routeLabelBounds.left,
     routeLabelBounds.left + routeLabelBounds.width - 1,
@@ -259,14 +307,14 @@ function pathBounds(points: readonly { x: number; y: number }[]): FlowchartBound
 function labelBounds(route: FlowchartEdgeRoute): FlowchartBounds | undefined {
   if (!route.edge.label) return undefined
   const label = flowchartEdgeLabelLayout(route.points, route.edge.label, visualLength)
-  const { point, width } = label
+  const { point, width, height } = label
   return {
     left: point.x,
     top: point.y,
     width,
-    height: 1,
+    height,
     centerX: point.x + Math.floor(width / 2),
-    centerY: point.y,
+    centerY: point.y + Math.floor(height / 2),
   }
 }
 
@@ -319,6 +367,7 @@ function layoutRankedNodes(
 
   const rankKeys = [...ranksByIndex.keys()].sort((a, b) => a - b)
   const horizontalGaps = horizontal ? horizontalRankGaps(diagram, normalizedRanks, rankKeys, requestedMinRankGap) : []
+  const verticalGaps = horizontal ? [] : verticalRankGaps(diagram, normalizedRanks, rankKeys, requestedMinRankGap)
   const bounds = new Map<string, FlowchartNodeBounds>()
 
   if (horizontal) {
@@ -385,7 +434,7 @@ function layoutRankedNodes(
         })
         x += size.width + rankNodeGap
       }
-      y += rowHeight + requestedMinRankGap
+      y += rowHeight + (verticalGaps[rankIndex] ?? 0)
     }
   }
 

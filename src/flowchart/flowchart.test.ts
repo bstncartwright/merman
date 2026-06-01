@@ -306,6 +306,71 @@ flowchart LR
     expect(output).not.toContain("notes▶")
   })
 
+  test("renders br-delimited edge labels on separate rows", () => {
+    const output = renderFlowchartDiagram(`flowchart LR
+  A[Start] -->|first<br/>second line| B[Finish]`)
+
+    expect(output).toContain("first")
+    expect(output).toContain("second line")
+    expect(output.indexOf("first")).toBeLessThan(output.indexOf("second line"))
+    expect(output).not.toContain("<br")
+  })
+
+  test("keeps tall multiline branch labels out of sibling nodes", () => {
+    const output = renderFlowchartDiagram(`flowchart LR
+  A[Start] -->|one<br/>two<br/>three<br/>four<br/>five| B[Upper]
+  A --> C[Lower]`)
+    const lines = output.split("\n")
+    const labelRows = ["one", "two", "three", "four", "five"].map((line) =>
+      lines.findIndex((row) => row.includes(line)),
+    )
+    const lowerRow = lines.findIndex((line) => line.includes("Lower"))
+
+    expect(labelRows).toEqual([...labelRows].sort((left, right) => left - right))
+    expect(lowerRow).toBeGreaterThan(labelRows.at(-1)!)
+  })
+
+  test("keeps multiline vertical edge labels above their target node", () => {
+    const output = renderFlowchartDiagram(`flowchart TD
+  A[Start] -->|first<br/>second<br/>third<br/>fourth| B[Finish]`)
+    const lines = output.split("\n")
+    const fourthRow = lines.findIndex((line) => line.includes("fourth"))
+    const finishRow = lines.findIndex((line) => line.includes("Finish"))
+
+    expect(fourthRow).toBeGreaterThanOrEqual(0)
+    expect(finishRow).toBeGreaterThan(fourthRow)
+    expect(output).not.toContain("<br")
+  })
+
+  test("expands canvas for multiline back-edge labels", () => {
+    const output = renderFlowchartDiagram(`flowchart TD
+  A --> B
+  B -->|try<br/>again| A`)
+
+    expect(output).toContain("try")
+    expect(output).toContain("again")
+    expect(output).not.toContain("<br")
+  })
+
+  test("applies active-edge styling to each multiline label row", () => {
+    const grid = renderParsedFlowchartGrid(
+      parseMermaidFlowchartDiagram(`flowchart LR
+  A -->|first<br/>second| B`),
+      { activeEdge: { from: "A", to: "B" } },
+    )
+    const styledText = new Map(
+      grid.rows.map((row) => [
+        row.map((cell) => cell.char).join(""),
+        row.filter((cell) => cell.char !== " ").map((cell) => cell.style),
+      ]),
+    )
+
+    for (const label of ["first", "second"]) {
+      const styles = [...styledText.entries()].find(([line]) => line.includes(label))?.[1]
+      expect(styles).toContain("activeEdge")
+    }
+  })
+
   test("only expands horizontal rank gaps for labeled edges", () => {
     const { bounds } = layoutFlowchartDiagram(`
 flowchart LR
@@ -341,6 +406,38 @@ graph LR
     expect(output).toContain("DB")
     expect(output).toContain("╭─ Web App ")
     expect(output.split("\n").find((line) => line.includes("API") && line.includes("DB"))).not.toContain("┼")
+  })
+
+  test("reserves frame rows for br-delimited subgraph labels", () => {
+    const output = renderFlowchartDiagram(`flowchart LR
+  subgraph Web [API<br/>Services]
+    A[Worker]
+  end`)
+    const lines = output.split("\n")
+    const apiRow = lines.findIndex((line) => line.includes("API"))
+    const servicesRow = lines.findIndex((line) => line.includes("Services"))
+    const workerRow = lines.findIndex((line) => line.includes("Worker"))
+
+    expect(apiRow).toBeGreaterThanOrEqual(0)
+    expect(servicesRow).toBe(apiRow + 1)
+    expect(workerRow).toBeGreaterThan(servicesRow)
+    expect(output).not.toContain("<br")
+  })
+
+  test("moves multiline subgraph labels away from entering routes", () => {
+    const output = renderFlowchartDiagram(`flowchart TD
+  Input --> A
+  subgraph Group [Line one<br/>Line two]
+    A[A] --> B[B]
+  end`)
+    const lines = output.split("\n")
+    const lineOne = lines.findIndex((line) => line.includes("Line one"))
+    const lineTwo = lines.findIndex((line) => line.includes("Line two"))
+    const b = lines.findIndex((line) => line.includes("│ B │"))
+
+    expect(lineOne).toBeGreaterThan(b)
+    expect(lineTwo).toBe(lineOne + 1)
+    expect(output).not.toContain("<br")
   })
 
   test("draws transition lines over subgraph frames without joining them", () => {

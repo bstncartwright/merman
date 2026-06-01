@@ -4,6 +4,7 @@ import { orthogonalPathPoints, walkOrthogonalSegment } from "../core/geometry.js
 import { DiagramCanvas, type DiagramCanvasCell } from "../core/canvas.js"
 import { diagramPulseStyleLevel, setDiagramPulseCell } from "../core/animation/pulse-cell.js"
 import { visitDiagramPulsePath } from "../core/animation/pulse.js"
+import { splitDiagramLines } from "../core/text.js"
 import {
   DIAGRAM_ARROW_HEADS,
   diagramArrowHeadBetween,
@@ -63,7 +64,7 @@ function mergeFlowchartCell(
   incoming: DiagramCanvasCell<FlowchartCellStyle, FlowchartCellMetadata>,
 ): DiagramCanvasCell<FlowchartCellStyle, FlowchartCellMetadata> {
   if (incoming.style !== "edge" && incoming.style !== "activeEdge") return incoming
-  if (existing.style === "label") return existing
+  if (existing.style === "label") return incoming.style === "activeEdge" ? incoming : existing
   if (incoming.char === " ") return existing
   if ((existing.style !== "edge" && existing.style !== "activeEdge") || existing.char === " ") return incoming
   if (DIAGRAM_ARROW_HEADS.has(existing.char) || DIAGRAM_ARROW_HEADS.has(incoming.char)) return incoming
@@ -234,8 +235,18 @@ function drawSubgraphFrame(grid: FlowchartGrid, bounds: FlowchartSubgraphBounds,
 
 function drawSubgraphLabel(grid: FlowchartGrid, bounds: FlowchartSubgraphBounds): void {
   if (bounds.label) {
-    const labelY = bounds.labelSide === "top" ? bounds.top : bounds.top + bounds.height - 1
-    grid.setText(bounds.left + 2, labelY, ` ${bounds.label} `, "group")
+    const lines = splitDiagramLines(bounds.label)
+    const labelY = bounds.labelSide === "top" ? bounds.top : bounds.top + bounds.height - lines.length
+    for (const [index, line] of lines.entries()) {
+      grid.setText(bounds.left + 2, labelY + index, ` ${line} `, "group")
+    }
+  }
+}
+
+function drawEdgeLabel(grid: FlowchartGrid, route: FlowchartEdgeRoute, style: FlowchartCellStyle): void {
+  const label = flowchartEdgeLabelLayout(route.points, route.edge.label, visualLength)
+  for (const [index, line] of label.lines.entries()) {
+    grid.setText(label.point.x, label.point.y + index, line, style)
   }
 }
 
@@ -252,8 +263,7 @@ function drawRoutedEdge(grid: FlowchartGrid, route: FlowchartEdgeRoute, active =
   const arrowFrom = points[points.length - 2]!
   grid.setCell(end.x, end.y, diagramArrowHeadBetween(arrowFrom, end), style)
   if (edge.label) {
-    const label = flowchartEdgeLabelLayout(points, edge.label, visualLength)
-    grid.setText(label.point.x, label.point.y, label.text, active ? "activeEdge" : "label")
+    drawEdgeLabel(grid, route, active ? "activeEdge" : "label")
   }
 }
 
@@ -301,8 +311,7 @@ function drawActiveRoute(grid: FlowchartGrid, route: FlowchartEdgeRoute, from: F
     styleActivePathCell(grid, point.x, point.y, "activeEdge")
   }
   if (route.edge.label) {
-    const label = flowchartEdgeLabelLayout(route.points, route.edge.label, visualLength)
-    grid.setText(label.point.x, label.point.y, label.text, "activeEdge")
+    drawEdgeLabel(grid, route, "activeEdge")
   }
 }
 

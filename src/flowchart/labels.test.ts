@@ -66,4 +66,46 @@ describe("flowchart edge labels", () => {
       ).point,
     ).toEqual({ x: 151, y: 7 })
   })
+
+  test("measures br-delimited edge label lines as a block", () => {
+    const layout = flowchartEdgeLabelLayout(
+      [
+        { x: 0, y: 2 },
+        { x: 20, y: 2 },
+      ],
+      "first<br/>second line",
+      measure,
+    )
+
+    expect(layout.lines).toEqual([" first ", " second line "])
+    expect(layout.width).toBe(13)
+    expect(layout.height).toBe(2)
+  })
+
+  test("places multiline horizontal edge labels outside the route row", () => {
+    const layout = flowchartEdgeLabelLayout(
+      [
+        { x: 0, y: 5 },
+        { x: 20, y: 5 },
+      ],
+      "first<br/>second",
+      measure,
+    )
+
+    expect(layout.point.y + layout.height).toBeLessThanOrEqual(5)
+  })
+
+  test("centers multiline vertical edge labels beside their route", () => {
+    const layout = flowchartEdgeLabelLayout(
+      [
+        { x: 22, y: 2 },
+        { x: 22, y: 10 },
+      ],
+      "one<br/>two<br/>three",
+      measure,
+    )
+
+    expect(layout.point).toEqual({ x: 23, y: 5 })
+    expect(layout.height).toBe(3)
+  })
 })
