@@ -6,7 +6,7 @@ import {
   normalizeActiveTransitionMode,
   normalizeActiveTransitions,
 } from "./active-transition.js"
-import { layoutStateDiagram } from "./diagram.js"
+import { layoutStateDiagram } from "./drawing.js"
 import {
   DEFAULT_STATE_ARROW_HEAD_STYLE,
   DEFAULT_STATE_BORDER_STYLE,
@@ -16,6 +16,7 @@ import {
   normalizeStatePulseLength,
   normalizeStatePulseProgress,
 } from "./options.js"
+import { parseMermaidStateDiagram } from "./parser.js"
 import { renderStateGridStyledText } from "./render-grid.js"
 import { resolveStateStyleColors } from "./style.js"
 import type {
@@ -331,7 +332,7 @@ export class StateDiagramRenderable extends TextBufferRenderable {
   }
 
   private updateDiagram(): void {
-    const grid = layoutStateDiagram(this._content, {
+    const grid = layoutStateDiagram(parseMermaidStateDiagram(this._content), {
       direction: this._direction,
       borderStyle: this._borderStyle,
       arrowHeadStyle: this._arrowHeadStyle,

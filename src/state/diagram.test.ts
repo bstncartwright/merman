@@ -4,6 +4,7 @@ import { createTestRenderer } from "@opentui/core/testing"
 import stringWidth from "string-width"
 import { expectDiagram } from "../test/diagram.js"
 import { renderStateDiagram, renderStateDiagramAnsi } from "./diagram.js"
+import { layoutStateDiagram } from "./drawing.js"
 import { parseMermaidStateDiagram } from "./parser.js"
 import { StateDiagramRenderable } from "./renderable.js"
 
@@ -138,6 +139,16 @@ stateDiagram-v2
 
     expect(labelRow.indexOf("B")).toBeLessThan(labelRow.indexOf("A"))
     expect(output).toContain("◀")
+  })
+
+  test("does not mutate a parsed diagram when rendering with a direction override", () => {
+    const diagram = parseMermaidStateDiagram(`stateDiagram-v2
+  direction LR
+  A --> B`)
+
+    layoutStateDiagram(diagram, { direction: "RL" })
+
+    expect(diagram.direction).toBe("LR")
   })
 
   test("places right-to-left transition labels between intact frames", () => {
