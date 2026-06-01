@@ -68,6 +68,61 @@ exports[`rendering gallery Flowchart / simple reverse horizontal edge 1`] = `
 ╰──────────╯          ╰────────╯"
 `;
 
+exports[`rendering gallery Flowchart / multiline edge label clearance 1`] = `
+"╭────────╮
+│ Upload │
+╰────┬───╯
+     │
+     │
+     │ validate payload
+     │ normalize fields
+     │ persist record
+     ▼ notify observer
+╭─────────╮
+├─────────┤
+│ Archive │
+├─────────┤
+╰─────────╯"
+`;
+
+exports[`rendering gallery Flowchart / multiline subgraph title relocation 1`] = `
+"   ╭───────╮
+   │ Input │
+   ╰───┬───╯
+       │
+       │
+╭──────│──────╮
+│      ▼      │
+│  ╭───────╮  │
+│  │ Parse │  │
+│  ╰───┬───╯  │
+│      │      │
+│      │      │
+│      │      │
+│      ▼      │
+│  ╭───────╮  │
+│  ├───────┤  │
+│  │ Store │  │
+│  ├───────┤  │
+│  ╰───────╯  │
+│  Validation │
+╰─ Pipeline ──╯"
+`;
+
+exports[`rendering gallery Flowchart / parallel multiline lanes 1`] = `
+"               first attempt
+╭────────╮     accepted          ╭────────╮
+│ Source ├──────────────────────▶│ Target │
+╰────┬───╯                       ╰────────╯
+     │                                ▲
+     │         second attempt         │
+     │         retry                  │
+     ├────────────────────────────────┤
+     │         third attempt          │
+     │         fallback               │
+     ╰────────────────────────────────╯"
+`;
+
 exports[`rendering gallery State / reverse direction and long labels 1`] = `
 "                   ╭────────╮ reopen after a very detailed reviewer comment ╭───────────╮
                    │ Review │◀──────────────────────────────────────────────┤ Published │

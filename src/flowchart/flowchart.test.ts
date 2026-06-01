@@ -126,6 +126,24 @@ describe("FlowchartDiagram", () => {
     expect(active).not.toContain("firstd")
   })
 
+  test("keeps three parallel multiline edges legible in both orientations", () => {
+    const horizontal = renderFlowchartDiagram(`flowchart LR
+  A[Source] -->|first 1<br/>first 2<br/>first 3<br/>first 4| B[Target]
+  A -->|second 1<br/>second 2<br/>second 3<br/>second 4| B
+  A -->|third 1<br/>third 2<br/>third 3<br/>third 4| B`)
+    const vertical = renderFlowchartDiagram(`flowchart TD
+  A[Source] -->|first lane<br/>first two| B[Target]
+  A -->|second lane<br/>second two| B
+  A -->|third lane<br/>third two| B`)
+
+    for (const label of ["second 1", "second 2", "second 3", "second 4", "third 1", "third 2"]) {
+      expect(horizontal).toContain(label)
+    }
+    for (const label of ["first lane", "first two", "second lane", "second two", "third lane", "third two"]) {
+      expect(vertical).toContain(label)
+    }
+  })
+
   test("keeps transitive targets below intermediate vertical stages", () => {
     const content = `flowchart TD
   A[Start] --> B[Validate]

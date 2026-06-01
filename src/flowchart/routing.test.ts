@@ -114,6 +114,23 @@ describe("flowchart routing", () => {
     ])
   })
 
+  test("spaces parallel horizontal lanes for multiline labels", () => {
+    const edges = [
+      { from: "A", to: "B", label: "first" },
+      { from: "A", to: "B", label: "second 1<br/>second 2<br/>second 3" },
+      { from: "A", to: "B", label: "third 1<br/>third 2<br/>third 3" },
+    ]
+    const routes = routeFlowchartEdges(
+      diagram("LR", edges),
+      new Map([
+        ["A", bounds("A", 0, 0)],
+        ["B", bounds("B", 20, 0)],
+      ]),
+    )
+
+    expect(routes[2]!.points[1]!.y).toBeGreaterThan(routes[1]!.points[1]!.y + 3)
+  })
+
   test("routes horizontal fan-out through a shared bus lane", () => {
     const edges = [
       { from: "A", to: "B", label: "" },

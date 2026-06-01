@@ -21,6 +21,8 @@ import {
   type DiagramLane,
   type DiagramSide,
 } from "../core/geometry.js"
+import { diagramTextWidth, splitDiagramLines } from "../core/text.js"
+import { flowchartEdgeLabelLayout } from "./labels.js"
 import type {
   FlowchartDiagram,
   FlowchartDirection,
@@ -143,19 +145,30 @@ function parallelEdgePath(
   from: FlowchartNodeBounds,
   to: FlowchartNodeBounds,
   direction: FlowchartDirection,
-  laneIndex: number,
+  laneCoordinate: number,
 ): FlowchartPoint[] {
   if (!isVerticalDirection(direction)) {
     const start = boundsSidePoint(from, "bottom")
     const end = boundsSidePoint(to, "bottom")
-    const busY = Math.max(start.y, end.y) + BUS_CLEARANCE + (laneIndex - 1) * 2
-    return pathViaLane(start, lane("y", busY), end)
+    return pathViaLane(start, lane("y", laneCoordinate), end)
   }
 
   const start = boundsSidePoint(from, "right")
   const end = boundsSidePoint(to, "right")
-  const busX = Math.max(start.x, end.x) + BUS_CLEARANCE + (laneIndex - 1) * 2
-  return pathViaLane(start, lane("x", busX), end)
+  return pathViaLane(start, lane("x", laneCoordinate), end)
+}
+
+function labelHeight(edge: FlowchartEdge): number {
+  return edge.label ? splitDiagramLines(edge.label).length : 0
+}
+
+function rightRenderExtent(route: FlowchartEdgeRoute): number {
+  let right = Math.max(...route.points.map((point) => point.x))
+  if (route.edge.label) {
+    const label = flowchartEdgeLabelLayout(route.points, route.edge.label, diagramTextWidth)
+    right = Math.max(right, label.point.x + label.width - 1)
+  }
+  return right
 }
 
 function edgePath(
@@ -436,11 +449,25 @@ function routeParallelEdges(
     const to = bounds.get(edges[0]!.to)
     if (!from || !to || from.id === to.id) continue
     const direction = directionForEdge(edges[0]!)
-    routes.push({ edge: edges[0]!, points: edgePath(from, to, direction, leftBoundary) })
+    const canonicalRoute = { edge: edges[0]!, points: edgePath(from, to, direction, leftBoundary) }
+    routes.push(canonicalRoute)
     handled.add(edges[0]!)
+    let previousRoute = canonicalRoute
     for (let index = 1; index < edges.length; index++) {
-      routes.push({ edge: edges[index]!, points: parallelEdgePath(from, to, direction, index) })
-      handled.add(edges[index]!)
+      const edge = edges[index]!
+      const laneCoordinate = isVerticalDirection(direction)
+        ? Math.max(
+            Math.max(boundsSidePoint(from, "right").x, boundsSidePoint(to, "right").x) + BUS_CLEARANCE,
+            rightRenderExtent(previousRoute) + NODE_CLEARANCE,
+          )
+        : Math.max(
+            Math.max(boundsSidePoint(from, "bottom").y, boundsSidePoint(to, "bottom").y) + BUS_CLEARANCE,
+            Math.max(...previousRoute.points.map((point) => point.y)) + Math.max(2, labelHeight(edge) + 1),
+          )
+      const route = { edge, points: parallelEdgePath(from, to, direction, laneCoordinate) }
+      routes.push(route)
+      handled.add(edge)
+      previousRoute = route
     }
   }
 }

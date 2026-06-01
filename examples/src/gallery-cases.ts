@@ -51,6 +51,29 @@ export const GALLERY_CASES: readonly GalleryCase[] = [
   Parser[Parser] --> Output[Rendered]`,
   },
   {
+    title: "Flowchart / multiline edge label clearance",
+    kind: "flowchart",
+    content: `flowchart TD
+  Upload[Upload] -->|validate payload<br/>normalize fields<br/>persist record<br/>notify observer| Archive[(Archive)]`,
+  },
+  {
+    title: "Flowchart / multiline subgraph title relocation",
+    kind: "flowchart",
+    content: `flowchart TD
+  Input[Input] --> Parse
+  subgraph Pipeline [Validation<br/>Pipeline]
+    Parse[Parse] --> Store[(Store)]
+  end`,
+  },
+  {
+    title: "Flowchart / parallel multiline lanes",
+    kind: "flowchart",
+    content: `flowchart LR
+  Source[Source] -->|first attempt<br/>accepted| Target[Target]
+  Source -->|second attempt<br/>retry| Target
+  Source -->|third attempt<br/>fallback| Target`,
+  },
+  {
     title: "State / reverse direction and long labels",
     kind: "state",
     content: `stateDiagram-v2
