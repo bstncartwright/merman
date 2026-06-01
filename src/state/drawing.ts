@@ -2,7 +2,6 @@ import { BorderChars, type BorderCharacters, type BorderStyle } from "@opentui/c
 import { DiagramCanvas, type DiagramCanvasCell } from "../core/canvas.js"
 import { diagramRadialCellColorLevel } from "../core/color/map.js"
 import { diagramArrowHead, diagramLineGlyph, drawDiagramFrame, mergeDiagramLineGlyph } from "../core/drawing.js"
-import type { DiagramDirection } from "../core/geometry.js"
 import { setDiagramPulseCell } from "../core/animation/pulse-cell.js"
 import { visitDiagramPulsePath } from "../core/animation/pulse.js"
 import {
@@ -14,7 +13,6 @@ import {
 import {
   createStateDiagramLayout,
   expandCompositeBoundsForFeedback,
-  measureStateTransitionLabel,
   type StateDiagramBoxBounds as BoxBounds,
   type StateDiagramNoteBounds as StateNoteBounds,
 } from "./layout.js"
@@ -28,7 +26,13 @@ import {
   normalizeStatePulseProgress,
 } from "./options.js"
 import type { StateCellMetadata, StateGrid } from "./render-grid.js"
-import { createStateTransitionRoutePlans, isStateHorizontalFeedback, type StateTransitionRoutePlan } from "./routing.js"
+import {
+  createStateTransitionJunctionPlans,
+  createStateTransitionRenderPlans,
+  measureStateTransitionLabel,
+  type StateTransitionPathPoint,
+  type StateTransitionRenderPlan,
+} from "./routing.js"
 import {
   isStateActiveTransitionStyle,
   isStateTransitionFadeStyle,
@@ -53,13 +57,10 @@ import { isHiddenCompositeMarker, prepareVisibleStateDiagram } from "./visible-m
 
 type StateCell = DiagramCanvasCell<StateCellStyle, StateCellMetadata>
 
-type StatePathPoint = readonly [number, number]
-
 interface TransitionDrawContext {
   fadeSource: FadeSourceStyle
   active: boolean
   fadeFromSource: boolean
-  path?: StatePathPoint[]
   sourceStateId: string
 }
 
@@ -101,23 +102,6 @@ function setCell(
   grid.setCell(x, y, char, style, { stateId, bgStateId })
 }
 
-function addPathPoint(path: StatePathPoint[] | undefined, x: number, y: number): void {
-  path?.push([x, y])
-}
-
-function setPathCell(
-  grid: StateGrid,
-  path: StatePathPoint[] | undefined,
-  x: number,
-  y: number,
-  char: string,
-  style?: StateCellStyle,
-  stateId?: string,
-): void {
-  setCell(grid, x, y, char, style, stateId)
-  addPathPoint(path, x, y)
-}
-
 function setText(
   grid: StateGrid,
   x: number,
@@ -130,8 +114,14 @@ function setText(
   grid.setText(x, y, text, style, { stateId, bgStateId })
 }
 
-function setTransitionLabel(grid: StateGrid, x: number, y: number, label: string, style: StateCellStyle): void {
-  measureStateTransitionLabel(label).lines.forEach((line, index) => setText(grid, x, y + index, line, style))
+function setTransitionLabel(
+  grid: StateGrid,
+  x: number,
+  y: number,
+  lines: readonly string[],
+  style: StateCellStyle,
+): void {
+  lines.forEach((line, index) => setText(grid, x, y + index, line, style))
 }
 
 function drawBox(
@@ -275,442 +265,41 @@ function transitionFadeCellStyle(context: TransitionDrawContext, distance: numbe
   return stateTransitionFadeStyle(context.fadeSource, context.active, distance, context.fadeFromSource)
 }
 
-function drawHorizontalRamp(
+function drawTransitionRenderPlan(
   grid: StateGrid,
-  fromX: number,
-  toX: number,
-  y: number,
-  direction: 1 | -1,
-  startDistance: number,
-  context: TransitionDrawContext,
-): void {
-  let distance = startDistance
-  for (let x = fromX; direction === 1 ? x <= toX : x >= toX; x += direction) {
-    setPathCell(grid, context.path, x, y, "─", transitionFadeCellStyle(context, distance), context.sourceStateId)
-    distance += 1
-  }
-}
-
-function drawVerticalRamp(
-  grid: StateGrid,
-  x: number,
-  fromY: number,
-  toY: number,
-  direction: 1 | -1,
-  startDistance: number,
-  context: TransitionDrawContext,
-): void {
-  let distance = startDistance
-  for (let y = fromY; direction === 1 ? y <= toY : y >= toY; y += direction) {
-    setPathCell(grid, context.path, x, y, "│", transitionFadeCellStyle(context, distance), context.sourceStateId)
-    distance += 1
-  }
-}
-
-function drawRightDeparture(grid: StateGrid, bounds: BoxBounds, context: TransitionDrawContext): void {
-  if (bounds.width <= 1 || bounds.height <= 1) return
-  setPathCell(
-    grid,
-    context.path,
-    bounds.left + bounds.width - 1,
-    bounds.centerY,
-    BorderChars.rounded.leftT,
-    transitionFadeCellStyle(context, 0),
-    context.sourceStateId,
-  )
-}
-
-function drawLeftDeparture(grid: StateGrid, bounds: BoxBounds, context: TransitionDrawContext): void {
-  if (bounds.width <= 1 || bounds.height <= 1) return
-  setPathCell(
-    grid,
-    context.path,
-    bounds.left,
-    bounds.centerY,
-    BorderChars.rounded.rightT,
-    transitionFadeCellStyle(context, 0),
-    context.sourceStateId,
-  )
-}
-
-function drawBottomDeparture(grid: StateGrid, bounds: BoxBounds, x: number, context: TransitionDrawContext): void {
-  if (bounds.width <= 1 || bounds.height <= 1) return
-  setPathCell(
-    grid,
-    context.path,
-    x,
-    bounds.top + bounds.height - 1,
-    BorderChars.rounded.topT,
-    transitionFadeCellStyle(context, 0),
-    context.sourceStateId,
-  )
-}
-
-function drawTopDeparture(grid: StateGrid, bounds: BoxBounds, x: number, context: TransitionDrawContext): void {
-  if (bounds.width <= 1 || bounds.height <= 1) return
-  setPathCell(
-    grid,
-    context.path,
-    x,
-    bounds.top,
-    BorderChars.rounded.bottomT,
-    transitionFadeCellStyle(context, 0),
-    context.sourceStateId,
-  )
-}
-
-function drawHorizontalForward(
-  grid: StateGrid,
-  plan: Extract<StateTransitionRoutePlan, { kind: "horizontal-forward" }>,
+  plan: StateTransitionRenderPlan,
   arrowHeadStyle: StateDiagramArrowHeadStyle,
-  context: TransitionDrawContext,
-): void {
-  const { from, to, targetIsChoice, leftToRight, transition } = plan
-  const label = transition.label
-  const y = from.centerY
-  const lineStyle = transitionLineStyle(context.active)
-  if (leftToRight) drawRightDeparture(grid, from, context)
-  else drawLeftDeparture(grid, from, context)
-  const step = leftToRight ? 1 : -1
-  const startX = leftToRight ? from.left + from.width : from.left - 1
-  const endX = leftToRight ? to.left - 1 : to.left + to.width
-  const startDistance = from.width <= 1 || from.height <= 1 ? 0 : 1
-  drawHorizontalRamp(grid, startX, targetIsChoice ? endX : endX - step, y, step, startDistance, context)
-  if (targetIsChoice) addPathPoint(context.path, to.left, y)
-  else
-    setPathCell(
-      grid,
-      context.path,
-      endX,
-      y,
-      diagramArrowHead(leftToRight ? "right" : "left", arrowHeadStyle),
-      lineStyle,
-    )
-  if (label) {
-    const metrics = measureStateTransitionLabel(label)
-    const labelX = Math.min(startX, endX) + Math.max(1, Math.floor((Math.abs(endX - startX) - metrics.width) / 2))
-    setTransitionLabel(grid, labelX, Math.max(0, y - metrics.height), label, transitionLabelStyle(context.active))
-  }
-}
-
-function drawTransitionRoutePlan(
-  grid: StateGrid,
-  plan: StateTransitionRoutePlan,
-  arrowHeadStyle: StateDiagramArrowHeadStyle,
-  context: TransitionDrawContext,
-): void {
-  const { from, to, transition, targetIsChoice } = plan
-  switch (plan.kind) {
-    case "self":
-      drawSelfTransition(grid, from, transition.label, arrowHeadStyle, context)
-      return
-    case "horizontal-forward":
-      drawHorizontalForward(grid, plan, arrowHeadStyle, context)
-      return
-    case "bottom-feedback":
-      drawBottomFeedback(grid, from, to, transition.label, plan.railY, arrowHeadStyle, targetIsChoice, context)
-      return
-    case "vertical-elbow":
-      drawVerticalElbowTransition(
-        grid,
-        from,
-        to,
-        transition.label,
-        plan.hasReverse,
-        arrowHeadStyle,
-        targetIsChoice,
-        context,
-      )
-      return
-    case "vertical":
-      drawVertical(grid, from, to, transition.label, arrowHeadStyle, targetIsChoice, context)
-  }
-}
-
-function drawSelfTransition(
-  grid: StateGrid,
-  bounds: BoxBounds,
-  label: string,
-  arrowHeadStyle: StateDiagramArrowHeadStyle,
-  context: TransitionDrawContext,
-): void {
-  if (bounds.width <= 1 || bounds.height <= 1) return
-
-  const lineStyle = transitionLineStyle(context.active)
-  const sourceX = bounds.left + Math.max(2, Math.floor(bounds.width / 3))
-  const bottomY = bounds.top + bounds.height - 1
-  const railY = bottomY + 2
-  const targetX = Math.max(sourceX + 3, bounds.left + Math.min(bounds.width - 3, Math.ceil((bounds.width * 2) / 3)))
-
-  drawBottomDeparture(grid, bounds, sourceX, context)
-  setPathCell(grid, context.path, sourceX, bottomY + 1, "│", transitionFadeCellStyle(context, 1), context.sourceStateId)
-  setPathCell(grid, context.path, sourceX, railY, "╰", lineStyle)
-  for (let x = sourceX + 1; x < targetX; x++) setPathCell(grid, context.path, x, railY, "─", lineStyle)
-  setPathCell(grid, context.path, targetX, railY, "╯", lineStyle)
-  setPathCell(grid, context.path, targetX, bottomY + 1, diagramArrowHead("up", arrowHeadStyle), lineStyle)
-
-  if (label) setTransitionLabel(grid, targetX + 2, bottomY + 1, label, transitionLabelStyle(context.active))
-}
-
-function outsideBottomY(bounds: BoxBounds): number {
-  return bounds.top + bounds.height
-}
-
-function innerConnectorX(bounds: BoxBounds, preferredX: number): number {
-  if (bounds.width <= 2) return bounds.centerX
-  return Math.max(bounds.left + 1, Math.min(bounds.left + bounds.width - 2, preferredX))
-}
-
-function drawBottomFeedback(
-  grid: StateGrid,
-  from: BoxBounds,
-  to: BoxBounds,
-  label: string,
-  railY: number,
-  arrowHeadStyle: StateDiagramArrowHeadStyle,
-  targetIsChoice: boolean,
   context: TransitionDrawContext,
 ): void {
   const lineStyle = transitionLineStyle(context.active)
-  const sourceX = from.centerX
-  const targetX = to.width > 1 ? (sourceX > to.centerX ? to.left + 1 : to.left + to.width - 2) : to.centerX
-  const targetRailCutsSource = targetX >= from.left && targetX <= from.left + from.width - 1
-  const railTargetX = targetRailCutsSource ? Math.max(from.left + from.width, to.left + to.width) + 2 : targetX
-  const sourceBottomY = outsideBottomY(from)
-  const targetBottomY = outsideBottomY(to)
-  const startDistance = from.width <= 1 || from.height <= 1 ? 0 : 1
-
-  drawBottomDeparture(grid, from, sourceX, context)
-  drawVerticalRamp(grid, sourceX, sourceBottomY, railY - 1, 1, startDistance, context)
-  setPathCell(grid, context.path, sourceX, railY, sourceX > railTargetX ? "╯" : "╰", lineStyle)
-  if (sourceX !== railTargetX) {
-    const horizontalStep = sourceX < railTargetX ? 1 : -1
-    for (let x = sourceX + horizontalStep; x !== railTargetX; x += horizontalStep) {
-      setPathCell(grid, context.path, x, railY, "─", lineStyle)
-    }
+  for (const cell of plan.cells) {
+    const char = cell.arrowDirection ? diagramArrowHead(cell.arrowDirection, arrowHeadStyle) : cell.char
+    const style = cell.fadeDistance === undefined ? lineStyle : transitionFadeCellStyle(context, cell.fadeDistance)
+    setCell(grid, cell.x, cell.y, char, style, cell.fadeDistance === undefined ? undefined : context.sourceStateId)
   }
-  setPathCell(grid, context.path, railTargetX, railY, sourceX > railTargetX ? "╰" : "╯", lineStyle)
-  for (let y = railY - 1; y > targetBottomY; y--) setPathCell(grid, context.path, railTargetX, y, "│", lineStyle)
-  if (railTargetX !== targetX) {
-    setPathCell(grid, context.path, railTargetX, targetBottomY, railTargetX < targetX ? "╭" : "╮", lineStyle)
-    const horizontalStep = railTargetX < targetX ? 1 : -1
-    for (let x = railTargetX + horizontalStep; x !== targetX; x += horizontalStep) {
-      setPathCell(grid, context.path, x, targetBottomY, "─", lineStyle)
-    }
-  }
-  setPathCell(
-    grid,
-    context.path,
-    targetX,
-    targetBottomY,
-    targetIsChoice ? "│" : diagramArrowHead("up", arrowHeadStyle),
-    lineStyle,
-  )
-  if (targetIsChoice) addPathPoint(context.path, to.left, to.top)
-
-  if (label) {
-    const metrics = measureStateTransitionLabel(label)
-    const horizontalRoom = Math.abs(sourceX - railTargetX) - 2
-    const labelX =
-      metrics.width <= horizontalRoom
-        ? Math.min(sourceX, railTargetX) +
-          Math.max(1, Math.floor((Math.abs(sourceX - railTargetX) - metrics.width) / 2))
-        : railTargetX + 2
-    setTransitionLabel(grid, labelX, Math.max(0, railY - metrics.height), label, transitionLabelStyle(context.active))
+  if (plan.label) {
+    setTransitionLabel(grid, plan.label.x, plan.label.y, plan.label.lines, transitionLabelStyle(context.active))
   }
 }
 
-function drawVerticalElbowTransition(
-  grid: StateGrid,
-  from: BoxBounds,
-  to: BoxBounds,
-  label: string,
-  hasReverse: boolean,
-  arrowHeadStyle: StateDiagramArrowHeadStyle,
-  targetIsChoice: boolean,
-  context: TransitionDrawContext,
-): void {
-  const lineStyle = transitionLineStyle(context.active)
-  const topToBottom = from.centerY < to.centerY
-  const offset = hasReverse ? (topToBottom ? -2 : 2) : 0
-  const startX = innerConnectorX(from, from.centerX + offset)
-  const endX = innerConnectorX(to, to.centerX + offset)
-  const startY = topToBottom ? from.top + from.height : from.top - 1
-  const endY = topToBottom ? to.top - 1 : to.top + to.height
-  const verticalStep = topToBottom ? 1 : -1
-  const startDistance = from.width <= 1 || from.height <= 1 ? 0 : 1
-
-  if (topToBottom) {
-    drawBottomDeparture(grid, from, startX, context)
-  } else {
-    drawTopDeparture(grid, from, startX, context)
-  }
-
-  if (startY !== endY) drawVerticalRamp(grid, startX, startY, endY - verticalStep, verticalStep, startDistance, context)
-
-  if (startX !== endX) {
-    const horizontalStep = startX < endX ? 1 : -1
-    setPathCell(
-      grid,
-      context.path,
-      startX,
-      endY,
-      topToBottom ? (startX < endX ? "╰" : "╯") : startX < endX ? "╭" : "╮",
-      lineStyle,
-    )
-    for (let x = startX + horizontalStep; x !== endX; x += horizontalStep) {
-      setPathCell(grid, context.path, x, endY, "─", lineStyle)
-    }
-  }
-
-  const targetChar = targetIsChoice
-    ? startX === endX
-      ? "│"
-      : topToBottom
-        ? "┬"
-        : "┴"
-    : diagramArrowHead(topToBottom ? "down" : "up", arrowHeadStyle)
-  setPathCell(grid, context.path, endX, endY, targetChar, lineStyle)
-  if (targetIsChoice) addPathPoint(context.path, to.left, to.top)
-  if (label) {
-    const width = measureStateTransitionLabel(label).width
-    if (topToBottom) {
-      const leftLabelX = startX - width - 2
-      const labelX = hasReverse || endX < startX ? (leftLabelX >= 0 ? leftLabelX : startX + 4) : startX + 2
-      setTransitionLabel(grid, labelX, Math.min(startY + 1, endY), label, transitionLabelStyle(context.active))
-    } else {
-      const labelX = Math.min(startX, endX) + Math.max(1, Math.floor((Math.abs(endX - startX) - width) / 2))
-      setTransitionLabel(
-        grid,
-        startX === endX ? startX + 3 : labelX,
-        Math.max(0, startY),
-        label,
-        transitionLabelStyle(context.active),
-      )
-    }
-  }
-}
-
-function drawVertical(
-  grid: StateGrid,
-  from: BoxBounds,
-  to: BoxBounds,
-  label: string,
-  arrowHeadStyle: StateDiagramArrowHeadStyle,
-  targetIsChoice: boolean,
-  context: TransitionDrawContext,
-): void {
-  const lineStyle = transitionLineStyle(context.active)
-  const topToBottom = from.centerY <= to.centerY
-  const x = from.centerX
-  const startY = topToBottom ? from.top + from.height : from.top - 1
-  const endY = topToBottom ? to.top - 1 : to.top + to.height
-  const step = topToBottom ? 1 : -1
-  const startDistance = from.width <= 1 || from.height <= 1 ? 0 : 1
-
-  if (topToBottom) {
-    drawBottomDeparture(grid, from, x, context)
-  } else {
-    drawTopDeparture(grid, from, x, context)
-  }
-
-  if (startY !== endY) drawVerticalRamp(grid, x, startY, endY - step, step, startDistance, context)
-  setPathCell(
-    grid,
-    context.path,
-    x,
-    endY,
-    targetIsChoice ? "│" : diagramArrowHead(topToBottom ? "down" : "up", arrowHeadStyle),
-    lineStyle,
-  )
-  if (targetIsChoice) addPathPoint(context.path, to.left, to.top)
-  if (label) setTransitionLabel(grid, x + 2, Math.min(startY, endY) + 1, label, transitionLabelStyle(context.active))
-}
-
-function connectionDirection(from: BoxBounds, to: BoxBounds): DiagramDirection {
-  const deltaX = to.centerX - from.centerX
-  const deltaY = to.centerY - from.centerY
-  if (Math.abs(deltaX) >= Math.abs(deltaY) && deltaX !== 0) return deltaX > 0 ? "right" : "left"
-  if (deltaY !== 0) return deltaY > 0 ? "down" : "up"
-  return "right"
-}
-
-function drawChoiceJunctions(
+function drawTransitionJunctionPlans(
   grid: StateGrid,
   diagram: StateDiagram,
   bounds: Map<string, BoxBounds>,
   activeState: string | undefined,
   activeTransitions: readonly StateDiagramActiveTransition[],
 ): void {
-  for (const state of diagram.states) {
-    if (state.kind !== "choice") continue
-    const choiceBounds = bounds.get(state.id)
-    if (!choiceBounds) continue
-
-    const connections = new Set<DiagramDirection>()
-    let active = false
-    for (const transition of diagram.transitions) {
-      if (transition.to === state.id) {
-        const sourceBounds = bounds.get(transition.from)
-        if (sourceBounds) connections.add(connectionDirection(choiceBounds, sourceBounds))
-        active = active || isActiveTransition(transition, activeTransitions)
-      }
-      if (transition.from === state.id) {
-        const targetBounds = bounds.get(transition.to)
-        if (targetBounds) {
-          const feedback =
-            (diagram.direction === "LR" || diagram.direction === "RL") &&
-            isStateHorizontalFeedback(diagram, choiceBounds, targetBounds)
-          connections.add(feedback ? "down" : connectionDirection(choiceBounds, targetBounds))
-        }
-        active = active || isActiveTransition(transition, activeTransitions)
-      }
-    }
-
-    setCell(
-      grid,
-      choiceBounds.left,
-      choiceBounds.top,
-      diagramLineGlyph(connections, "rounded"),
-      state.id === activeState ? "activeState" : active ? "activeTransition" : "choice",
-    )
-  }
-}
-
-function drawHiddenCompositeMarkerJunctions(
-  grid: StateGrid,
-  diagram: StateDiagram,
-  bounds: Map<string, BoxBounds>,
-  activeState: string | undefined,
-  activeTransitions: readonly StateDiagramActiveTransition[],
-): void {
-  for (const state of diagram.states) {
-    if (!isHiddenCompositeMarker(state)) continue
-    const markerBounds = bounds.get(state.id)
-    if (!markerBounds) continue
-
-    const connections = new Set<DiagramDirection>()
-    let active = false
-    for (const transition of diagram.transitions) {
-      if (transition.to === state.id) {
-        const sourceBounds = bounds.get(transition.from)
-        if (sourceBounds) connections.add(connectionDirection(markerBounds, sourceBounds))
-        active = active || isActiveTransition(transition, activeTransitions)
-      }
-      if (transition.from === state.id) {
-        const targetBounds = bounds.get(transition.to)
-        if (targetBounds) connections.add(connectionDirection(markerBounds, targetBounds))
-        active = active || isActiveTransition(transition, activeTransitions)
-      }
-    }
-
-    setCell(
-      grid,
-      markerBounds.left,
-      markerBounds.top,
-      diagramLineGlyph(connections, "rounded"),
-      state.id === activeState ? "activeState" : active ? "activeTransition" : "transition",
-    )
+  for (const plan of createStateTransitionJunctionPlans(diagram, bounds)) {
+    const active = plan.transitions.some((transition) => isActiveTransition(transition, activeTransitions))
+    const style =
+      plan.state.id === activeState
+        ? "activeState"
+        : active
+          ? "activeTransition"
+          : plan.kind === "choice"
+            ? "choice"
+            : "transition"
+    setCell(grid, plan.bounds.left, plan.bounds.top, diagramLineGlyph(plan.connections, "rounded"), style)
   }
 }
 
@@ -756,14 +345,14 @@ function setTransitionFrontierCell(
   setTransitionPulseCell(grid, x, y, distance, radius, edgeDistance, isTransitionFrontierStyle)
 }
 
-function activeTransitionPathLength(paths: readonly (StatePathPoint[] | undefined)[]): number {
+function activeTransitionPathLength(paths: readonly (readonly StateTransitionPathPoint[] | undefined)[]): number {
   return paths.reduce((total, path) => total + (path?.length ?? 0), 0)
 }
 
 function activeTransitionPathPointAt(
-  paths: readonly (StatePathPoint[] | undefined)[],
+  paths: readonly (readonly StateTransitionPathPoint[] | undefined)[],
   index: number,
-): StatePathPoint | undefined {
+): StateTransitionPathPoint | undefined {
   let offset = index
   for (const path of paths) {
     if (!path) continue
@@ -775,7 +364,7 @@ function activeTransitionPathPointAt(
 
 function drawActiveTransitionPulseOnPaths(
   grid: StateGrid,
-  paths: readonly (StatePathPoint[] | undefined)[],
+  paths: readonly (readonly StateTransitionPathPoint[] | undefined)[],
   pulseFrame: number | undefined,
   pulseProgress: number | undefined,
   pulseLength: number,
@@ -802,7 +391,7 @@ function applyActiveTransitionPulse(
   pulseProgress: number | undefined,
   pulseLength: number,
   pulseGap: number,
-  activeTransitionPaths: readonly (StatePathPoint[] | undefined)[],
+  activeTransitionPaths: readonly (readonly StateTransitionPathPoint[] | undefined)[],
 ): void {
   if (pulseFrame === undefined && pulseProgress === undefined) return
 
@@ -817,7 +406,7 @@ function setInactiveTransitionCell(grid: StateGrid, x: number, y: number): void 
 
 function applyActiveTransitionMask(
   grid: StateGrid,
-  activeTransitionPaths: readonly (StatePathPoint[] | undefined)[],
+  activeTransitionPaths: readonly (readonly StateTransitionPathPoint[] | undefined)[],
   progress: number | undefined,
   mode: StateDiagramActiveTransitionMode,
 ): void {
@@ -892,7 +481,7 @@ export function layoutStateDiagram(sourceDiagram: StateDiagram, options: StateDi
   const maxTransitionLabelWidth = Math.max(0, ...transitionLabelSizes.map((size) => size.width))
   const maxTransitionLabelLines = Math.max(0, ...transitionLabelSizes.map((size) => size.height))
   const grid = makeGrid(maxX + Math.max(24, maxTransitionLabelWidth + 4), maxY + 8 + maxTransitionLabelLines)
-  const activeTransitionPaths: Array<StatePathPoint[] | undefined> = []
+  const activeTransitionPaths: Array<readonly StateTransitionPathPoint[] | undefined> = []
 
   for (const composite of diagram.composites) {
     const bound = compositeBounds.get(composite.id)
@@ -913,27 +502,24 @@ export function layoutStateDiagram(sourceDiagram: StateDiagram, options: StateDi
     drawBox(grid, state, bound, size.lines, options.activeState === state.id, borderStyle)
   }
 
-  for (const plan of createStateTransitionRoutePlans(diagram, bounds, feedbackLaneY)) {
-    const transition = plan.transition
+  for (const plan of createStateTransitionRenderPlans(diagram, bounds, feedbackLaneY)) {
+    const transition = plan.route.transition
     const fadeSource = transitionFadeSource(statesById, transition, options.activeState)
     const activeIndex = activeTransitionIndex(transition, activeTransitions)
     const active = activeIndex !== -1
     const fadeFromSource = activeIndex <= 0
-    const activePath: StatePathPoint[] | undefined = active ? [] : undefined
     const drawContext: TransitionDrawContext = {
       fadeSource,
       active,
       fadeFromSource,
-      path: activePath,
       sourceStateId: transition.from,
     }
-    drawTransitionRoutePlan(grid, plan, arrowHeadStyle, drawContext)
+    drawTransitionRenderPlan(grid, plan, arrowHeadStyle, drawContext)
 
-    if (activePath?.length) activeTransitionPaths[activeIndex] = activePath
+    if (active && plan.path.length > 0) activeTransitionPaths[activeIndex] = plan.path
   }
 
-  drawChoiceJunctions(grid, diagram, bounds, options.activeState, activeTransitions)
-  drawHiddenCompositeMarkerJunctions(grid, diagram, bounds, options.activeState, activeTransitions)
+  drawTransitionJunctionPlans(grid, diagram, bounds, options.activeState, activeTransitions)
   applyActiveTransitionMask(grid, activeTransitionPaths, activeTransitionProgress, activeTransitionMode)
   applyActiveTransitionPulse(grid, pulseFrame, pulseProgress, pulseLength, pulseGap, activeTransitionPaths)
 

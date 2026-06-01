@@ -269,6 +269,34 @@ stateDiagram-v2
     `)
   })
 
+  test("captures converging labeled branches with long state names", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  [*] --> Waiting
+  state "Waiting for surface and workspace" as Waiting
+  state "Surface bound only" as Surface
+  state "Workspace bound only" as Workspace
+  state "Ready with queued input" as Ready
+  state "Agent activity requested" as Active
+  Waiting --> Surface: InteractionSurfaceBound
+  Waiting --> Workspace: WorkspaceBound
+  Surface --> Ready: WorkspaceBound
+  Workspace --> Ready: InteractionSurfaceBound
+  Ready --> Active: AgentActivityRequested`)
+
+    expect(output).toMatchInlineSnapshot(`
+      "              ╭───────────────────────────────────╮ InteractionSurfaceBound ╭────────────────────╮ WorkspaceBound ╭─────────────────────────╮ AgentActivityRequested ╭──────────────────────────╮
+      ●────────────▶│ Waiting for surface and workspace ├────────────────────────▶│ Surface bound only ├───────────────▶│ Ready with queued input ├───────────────────────▶│ Agent activity requested │
+                    ╰───────────────┬───────────────────╯                         ╰────────────────────╯                ╰─────────────────────────╯                        ╰──────────────────────────╯
+                                    │ WorkspaceBound                                                                                   ▲
+                                    ╰──────────────────────────────────────────────────────╮                                           │
+                                                                                           │           InteractionSurfaceBound         │
+                                                                                           ▼   ╭───────────────────────────────────────╯
+                                                                                 ╭─────────────┴────────╮
+                                                                                 │ Workspace bound only │
+                                                                                 ╰──────────────────────╯"
+    `)
+  })
+
   test("keeps raised note connectors off outgoing transitions", () => {
     const output = renderStateDiagram(`
 stateDiagram-v2

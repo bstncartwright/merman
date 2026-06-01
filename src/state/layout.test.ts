@@ -28,6 +28,28 @@ describe("StateDiagramLayout", () => {
     expect(c.top).toBeGreaterThan(a.top)
   })
 
+  test("aligns a reconverging side branch under the parallel main-path stage", () => {
+    const diagram: StateDiagram = {
+      direction: "LR",
+      states: ["Fork", "Upper", "Lower", "Join"].map((id) => ({ id, label: id, kind: "state" })),
+      transitions: [
+        { from: "Fork", to: "Upper", label: "upper" },
+        { from: "Fork", to: "Lower", label: "lower" },
+        { from: "Upper", to: "Join", label: "join" },
+        { from: "Lower", to: "Join", label: "join" },
+      ],
+      composites: [],
+      notes: [],
+    }
+
+    const layout = createStateDiagramLayout(diagram, { minStateGap: 5 })
+    const upper = layout.bounds.get("Upper")!
+    const lower = layout.bounds.get("Lower")!
+
+    expect(lower.centerX).toBe(upper.centerX)
+    expect(lower.top).toBeGreaterThan(upper.top)
+  })
+
   test("places note bounds outside their target state", () => {
     const diagram: StateDiagram = {
       direction: "LR",

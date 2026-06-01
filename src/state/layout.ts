@@ -1,6 +1,6 @@
 import { translateDiagramBounds } from "../core/geometry.js"
 import { diagramTextWidth, measureDiagramTextBox, splitDiagramLines } from "../core/text.js"
-import { hasReverseTransition, isStateHorizontalFeedback } from "./routing.js"
+import { hasReverseTransition, isStateHorizontalFeedback, measureStateTransitionLabel } from "./routing.js"
 import type {
   StateDiagram,
   StateDiagramCompositeState,
@@ -41,12 +41,6 @@ function visualLength(value: string): number {
 
 export function splitStateDiagramLines(value: string): string[] {
   return splitDiagramLines(value)
-}
-
-export function measureStateTransitionLabel(label: string): { lines: string[]; width: number; height: number } {
-  if (!label) return { lines: [], width: 0, height: 0 }
-  const lines = splitStateDiagramLines(label)
-  return { lines, width: Math.max(...lines.map(visualLength)), height: lines.length }
 }
 
 function computeRanks(diagram: StateDiagram): Map<string, number> {
@@ -469,6 +463,7 @@ function createHorizontalLayout(diagram: StateDiagram, options: StateDiagramLayo
   const statesById = new Map(diagram.states.map((state) => [state.id, state]))
   const mainPath = computeMainPath(diagram)
   const mainIds = new Set(mainPath)
+  const mainPathIndex = new Map(mainPath.map((id, index) => [id, index]))
   const baselineY = Math.max(
     1,
     ...diagram.transitions.map((transition) => measureStateTransitionLabel(transition.label).height),
@@ -512,12 +507,25 @@ function createHorizontalLayout(diagram: StateDiagram, options: StateDiagramLayo
     const branchSizes = branchIds.map((id) => sizes.get(id)!).filter(Boolean)
     const totalWidth =
       branchSizes.reduce((sum, size) => sum + size.width, 0) + Math.max(0, branchSizes.length - 1) * branchGap
-    let left = parent.centerX - Math.floor(totalWidth / 2)
+    const parentIndex = mainPathIndex.get(parentId)
+    const joinIds = branchIds.map(
+      (id) =>
+        diagram.transitions.find(
+          (transition) =>
+            transition.from === id &&
+            mainIds.has(transition.to) &&
+            parentIndex !== undefined &&
+            (mainPathIndex.get(transition.to) ?? -1) > parentIndex + 1,
+        )?.to,
+    )
+    const commonJoin = joinIds[0] && joinIds.every((id) => id === joinIds[0]) ? joinIds[0] : undefined
+    const parallelLane = commonJoin && parentIndex !== undefined ? bounds.get(mainPath[parentIndex + 1]!) : undefined
+    let left = (parallelLane?.centerX ?? parent.centerX) - Math.floor(totalWidth / 2)
     for (const branchId of branchIds) {
       if (bounds.has(branchId)) continue
       const size = sizes.get(branchId)
       if (!size) continue
-      const top = baselineY + 5
+      const top = baselineY + (parallelLane ? 6 : 5)
       bounds.set(branchId, {
         id: branchId,
         left,

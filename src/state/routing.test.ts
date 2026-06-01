@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test"
 import { activeTransitionIndex } from "./active-transition.js"
 import type { StateDiagramBoxBounds } from "./layout.js"
 import { parseMermaidStateDiagram } from "./parser.js"
-import { createStateTransitionRoutePlans } from "./routing.js"
+import {
+  createStateTransitionJunctionPlans,
+  createStateTransitionRenderPlans,
+  createStateTransitionRoutePlans,
+} from "./routing.js"
 import { prepareVisibleStateDiagram, type StateVisibleDiagram } from "./visible-model.js"
 
 function bounds(id: string, centerX: number, centerY: number): StateDiagramBoxBounds {
@@ -58,5 +62,114 @@ describe("createStateTransitionRoutePlans", () => {
 
     expect(entry?.transition.sourceTransitions).toHaveLength(2)
     expect(activeTransitionIndex(entry!.transition, entry!.transition.sourceTransitions!)).toBe(0)
+  })
+})
+
+describe("createStateTransitionRenderPlans", () => {
+  test("prepares concrete cells, labels, and animation paths before painting", () => {
+    const diagram: StateVisibleDiagram = {
+      direction: "LR",
+      states: ["A", "B"].map((id) => ({ id, label: id, kind: "state" })),
+      transitions: [{ from: "A", to: "B", label: "next" }],
+      composites: [],
+      notes: [],
+    }
+    const placements = new Map([
+      ["A", bounds("A", 4, 4)],
+      ["B", bounds("B", 14, 4)],
+    ])
+
+    const plan = createStateTransitionRenderPlans(diagram, placements, 18)[0]!
+
+    expect(plan.cells).toEqual([
+      { x: 6, y: 4, char: "├", fadeDistance: 0 },
+      { x: 7, y: 4, char: "─", fadeDistance: 1 },
+      { x: 8, y: 4, char: "─", fadeDistance: 2 },
+      { x: 9, y: 4, char: "─", fadeDistance: 3 },
+      { x: 10, y: 4, char: "─", fadeDistance: 4 },
+      { x: 11, y: 4, arrowDirection: "right" },
+    ])
+    expect(plan.label).toEqual({ x: 8, y: 3, lines: ["next"] })
+    expect(plan.path).toEqual([
+      [6, 4],
+      [7, 4],
+      [8, 4],
+      [9, 4],
+      [10, 4],
+      [11, 4],
+    ])
+  })
+})
+
+describe("createStateTransitionJunctionPlans", () => {
+  test("prepares choice topology from connected transitions", () => {
+    const diagram: StateVisibleDiagram = {
+      direction: "LR",
+      states: [
+        { id: "A", label: "A", kind: "state" },
+        { id: "Decision", label: "Decision", kind: "choice" },
+        { id: "B", label: "B", kind: "state" },
+        { id: "C", label: "C", kind: "state" },
+      ],
+      transitions: [
+        { from: "A", to: "Decision", label: "" },
+        { from: "Decision", to: "B", label: "yes" },
+        { from: "Decision", to: "C", label: "no" },
+      ],
+      composites: [],
+      notes: [],
+    }
+    const placements = new Map([
+      ["A", bounds("A", 4, 4)],
+      ["Decision", bounds("Decision", 14, 4)],
+      ["B", bounds("B", 24, 4)],
+      ["C", bounds("C", 4, 10)],
+    ])
+
+    const plan = createStateTransitionJunctionPlans(diagram, placements)[0]!
+
+    expect(plan.kind).toBe("choice")
+    expect([...plan.connections]).toEqual(["left", "right", "down"])
+    expect(plan.transitions.map((transition) => transition.label)).toEqual(["", "yes", "no"])
+  })
+})
+
+describe("reconverging vertical elbows", () => {
+  test("uses separate top connectors for a lower parallel lane", () => {
+    const diagram: StateVisibleDiagram = {
+      direction: "LR",
+      states: ["Fork", "Upper", "Lower", "Join"].map((id) => ({ id, label: id, kind: "state" })),
+      transitions: [
+        { from: "Fork", to: "Upper", label: "" },
+        { from: "Fork", to: "Lower", label: "down" },
+        { from: "Upper", to: "Join", label: "" },
+        { from: "Lower", to: "Join", label: "up" },
+      ],
+      composites: [],
+      notes: [],
+    }
+    const placements = new Map([
+      ["Fork", bounds("Fork", 4, 4)],
+      ["Upper", bounds("Upper", 14, 4)],
+      ["Lower", bounds("Lower", 14, 11)],
+      ["Join", bounds("Join", 24, 4)],
+    ])
+
+    const plans = createStateTransitionRenderPlans(diagram, placements, 18)
+    const entering = plans.find((plan) => plan.route.transition.to === "Lower")!
+    const leaving = plans.find((plan) => plan.route.transition.from === "Lower")!
+
+    expect(entering.route).toMatchObject({ kind: "vertical-elbow", offsetConnector: true })
+    expect(leaving.route).toMatchObject({ kind: "vertical-elbow", offsetConnector: true })
+    expect(entering.path.at(-1)).not.toEqual(leaving.path[0])
+    expect(entering.cells.at(-1)).toMatchObject({ arrowDirection: "down" })
+    expect(entering.cells.at(-2)).toMatchObject({ x: entering.cells.at(-1)!.x, char: "│" })
+    expect(entering.cells.at(-2)!.y).toBe(entering.cells.at(-1)!.y - 1)
+    expect(entering.cells.at(-3)).toMatchObject({ x: entering.cells.at(-1)!.x, char: "╮" })
+    expect(entering.cells.at(-3)!.y).toBe(entering.cells.at(-1)!.y - 2)
+    const enteringHorizontalY = entering.cells.find((cell) => cell.char === "╰")!.y
+    const leavingHorizontalY = leaving.cells.find((cell) => cell.char === "╭")!.y
+    expect(entering.label!.y).toBeLessThan(enteringHorizontalY)
+    expect(leaving.label!.y).toBeLessThan(leavingHorizontalY)
   })
 })

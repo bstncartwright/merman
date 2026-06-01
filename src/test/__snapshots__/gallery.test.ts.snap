@@ -73,9 +73,9 @@ exports[`rendering gallery State / reverse direction and long labels 1`] = `
 "                   ╭────────╮ reopen after a very detailed reviewer comment ╭───────────╮
                    │ Review │◀──────────────────────────────────────────────┤ Published │
                    ╰──┬─────╯                                               ╰───────────╯
-                      │    ▲───╮
-   changes requested  │        │
-                     ▼╯        │
+   changes requested  │    ▲───╮
+                     ╭╯        │
+                     ▼         │
                    ╭───────╮   │
                    │ Draft │   │
                    ╰───┬───╯   │
@@ -144,10 +144,10 @@ exports[`rendering gallery State / choice split and repair loop 1`] = `
 exports[`rendering gallery State / reverse choice split 1`] = `
 "          ╭───────────╮   clean        validate   ╭─────────╮
           │ Published │◀────────────┬─────────────┤ Editing │◀────────────●
-          ╰───────────╯             │             ╰─────────╯
-                                    │ rejected
-                                    │
-                                    ╰▼
+          ╰───────────╯             │ rejected    ╰─────────╯
+                                    ╰╮
+                                     │
+                                     ▼
                                 ╭────────╮
                                 │ Errors │
                                 ╰────────╯"
