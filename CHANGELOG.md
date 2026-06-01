@@ -1,5 +1,17 @@
 # @kitlangton/merman
 
+## 0.2.0
+
+### Minor Changes
+
+- ddaff2b: Add `createMermaidMarkdownRenderer` for rendering fenced Mermaid blocks inside OpenTUI `MarkdownRenderable` content and a `./tui` entrypoint for OpenCode's optional code-block renderer plugin API.
+
+### Patch Changes
+
+- 5f042db: Preserve arrow direction for horizontal Flowchart cycles, feedback edges, and parallel connections, keep transitive DAG targets after their intermediate stages, and render multiline edge, parallel-edge, and subgraph labels without exposing Mermaid `<br/>` markup or merging labels.
+- 5f042db: Keep long Sequence messages and notes inside their containing group and fragment frames, and stop animated self-message pulses at explicit arrowheads.
+- 04b9e89: Improve State diagram rendering for self-loops, parallel transitions, independent and duplicate feedback paths, note-safe feedback corridors, reconverging branches, choice junctions, and routed elbow transitions.
+
 ## 0.1.2
 
 ### Patch Changes
