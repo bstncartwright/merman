@@ -470,6 +470,22 @@ stateDiagram-v2
     expect(output).not.toContain("║──")
   })
 
+  test("keeps duplicate feedback labels away from an independent return path", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction LR
+  A --> B
+  B --> C
+  C --> D
+  C --> A: ca
+  D --> B: db1
+  D --> B: db2`)
+
+    expect(output).toContain("ca")
+    expect(output).toContain("db1")
+    expect(output).toContain("db2")
+    expect(output).not.toContain("c│")
+  })
+
   test("renders composite state containers", () => {
     const output = renderStateDiagram(`
 stateDiagram-v2

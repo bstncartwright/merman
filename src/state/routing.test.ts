@@ -166,6 +166,33 @@ describe("createStateTransitionRoutePlans", () => {
     expect(inner.route).toMatchObject({ kind: "bottom-feedback", railY: 12 })
     expect(inner.path.some(([x, y]) => outerCells.has(`${x}:${y}`))).toBe(false)
   })
+
+  test("allocates duplicate feedback transitions without crossing an independent feedback path", () => {
+    const diagram: StateVisibleDiagram = {
+      direction: "LR",
+      states: ["A", "B", "C", "D"].map((id) => ({ id, label: id, kind: "state" })),
+      transitions: [
+        { from: "C", to: "A", label: "ca" },
+        { from: "D", to: "B", label: "db1" },
+        { from: "D", to: "B", label: "db2" },
+      ],
+      composites: [],
+      notes: [],
+    }
+    const placements = new Map([
+      ["A", bounds("A", 4, 4)],
+      ["B", bounds("B", 14, 4)],
+      ["C", bounds("C", 24, 4)],
+      ["D", bounds("D", 34, 4)],
+    ])
+    const plans = createStateTransitionRenderPlans(diagram, placements, 12)
+    const independent = plans.find((plan) => plan.route.transition.label === "ca")!
+    const independentCells = new Set(independent.path.map(([x, y]) => `${x}:${y}`))
+    const duplicates = plans.filter((plan) => plan.route.transition.label.startsWith("db"))
+
+    expect(duplicates.map((plan) => plan.route.kind)).toEqual(["top-feedback", "top-feedback"])
+    expect(duplicates.every((plan) => plan.path.every(([x, y]) => !independentCells.has(`${x}:${y}`)))).toBe(true)
+  })
 })
 
 describe("createStateTransitionRenderPlans", () => {

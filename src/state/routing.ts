@@ -125,14 +125,11 @@ function createFeedbackAllocations(
   if (diagram.direction !== "LR" && diagram.direction !== "RL") return new Map()
   const allocations = new Map<StateVisibleTransition, FeedbackAllocation>()
   const sidedIntervals: Record<"bottom" | "top", FeedbackInterval[]> = { bottom: [], top: [] }
-  const endpointKeys = new Set<string>()
+  const canonicalSides = new Map<string, "bottom" | "top">()
   const topLaneY = feedbackTopY ?? Math.min(...[...bounds.values()].map((bound) => bound.top)) - 3
   const intervals: FeedbackInterval[] = []
 
   for (const transition of diagram.transitions) {
-    const endpointKey = `${transition.from}\u0000${transition.to}`
-    if (endpointKeys.has(endpointKey)) continue
-    endpointKeys.add(endpointKey)
     const from = bounds.get(transition.from)
     const to = bounds.get(transition.to)
     if (!from || !to || transition.from === transition.to || !isStateHorizontalFeedback(diagram, from, to)) continue
@@ -142,10 +139,14 @@ function createFeedbackAllocations(
   }
 
   for (const interval of intervals) {
-    const side = (["bottom", "top"] as const).find(
-      (candidate) => !sidedIntervals[candidate].some((existing) => feedbackIntervalsCross(existing, interval)),
-    )
+    const endpointKey = `${interval.transition.from}\u0000${interval.transition.to}`
+    const side =
+      canonicalSides.get(endpointKey) ??
+      (["bottom", "top"] as const).find(
+        (candidate) => !sidedIntervals[candidate].some((existing) => feedbackIntervalsCross(existing, interval)),
+      )
     if (!side) continue
+    canonicalSides.set(endpointKey, side)
     interval.side = side
     sidedIntervals[side].push(interval)
   }
@@ -223,22 +224,8 @@ export function createStateTransitionRoutePlans(
     const endpointKey = `${transition.from}\u0000${transition.to}`
     const parallelIndex = endpointOccurrences.get(endpointKey) ?? 0
     endpointOccurrences.set(endpointKey, parallelIndex + 1)
-    if (parallelIndex > 0) {
-      if (diagram.direction === "LR" || diagram.direction === "RL") {
-        const firstIsFeedback = isStateHorizontalFeedback(diagram, from, to)
-        return [
-          {
-            ...base,
-            kind: "bottom-parallel",
-            railY: feedbackLaneY + (parallelIndex - (firstIsFeedback ? 0 : 1)) * parallelLaneGap,
-          },
-        ]
-      }
-      return [{ ...base, kind: "side-parallel", railX: sideLaneX + (parallelIndex - 1) * parallelLaneGap }]
-    }
-    if (diagram.direction !== "LR" && diagram.direction !== "RL") return [{ ...base, kind: "vertical" }]
-
-    const feedback = isStateHorizontalFeedback(diagram, from, to)
+    const feedback =
+      (diagram.direction === "LR" || diagram.direction === "RL") && isStateHorizontalFeedback(diagram, from, to)
     const feedbackAllocation = feedbackAllocations.get(transition)
     if (feedbackAllocation) {
       return [
@@ -249,6 +236,20 @@ export function createStateTransitionRoutePlans(
         },
       ]
     }
+    if (parallelIndex > 0) {
+      if (diagram.direction === "LR" || diagram.direction === "RL") {
+        return [
+          {
+            ...base,
+            kind: "bottom-parallel",
+            railY: feedbackLaneY + (parallelIndex - 1) * parallelLaneGap,
+          },
+        ]
+      }
+      return [{ ...base, kind: "side-parallel", railX: sideLaneX + (parallelIndex - 1) * parallelLaneGap }]
+    }
+    if (diagram.direction !== "LR" && diagram.direction !== "RL") return [{ ...base, kind: "vertical" }]
+
     if (from.centerY !== to.centerY) {
       if (from.centerY > to.centerY && feedback) return [{ ...base, kind: "bottom-feedback", railY: feedbackLaneY }]
       const hasReverse = hasReverseTransition(diagram, transition)
