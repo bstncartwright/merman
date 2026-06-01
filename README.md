@@ -247,7 +247,8 @@ renderer.root.add(diagram)
 
 `Sequence.Renderable` and `State.Renderable` follow the same construction
 pattern. All three renderables expose color controls and `pulseFrame` for
-animated paths. `Flowchart.Renderable` supports active nodes and edges;
+animated paths, plus `batchUpdate(() => { ... })` for atomic live option
+changes. `Flowchart.Renderable` supports active nodes and edges;
 `State.Renderable` supports active states and transitions; sequence diagrams
 currently expose message pulse animation without active-selection controls.
 See the demos in [`examples/`](./examples).

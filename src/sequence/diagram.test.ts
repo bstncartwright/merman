@@ -53,6 +53,28 @@ sequenceDiagram
     `)
   })
 
+  test("normalizes invalid participant gaps for text and live rendering", async () => {
+    const content = "sequenceDiagram\n  A->>B: hello"
+
+    expect(renderSequenceDiagram(content, { minParticipantGap: Number.NaN })).toContain("hello")
+
+    const testRenderer = await createTestRenderer({ width: 60, height: 12 })
+    try {
+      const diagram = new SequenceDiagramRenderable(testRenderer.renderer, {
+        content,
+        minParticipantGap: Number.NaN,
+      })
+
+      expect(diagram.minParticipantGap).toBe(18)
+      diagram.minParticipantGap = 0
+      expect(diagram.minParticipantGap).toBe(1)
+      diagram.minParticipantGap = 3.9
+      expect(diagram.minParticipantGap).toBe(3)
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
   test("connects participant headers to lifelines", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram
@@ -518,6 +540,35 @@ sequenceDiagram
 
       expect(requestSpan?.fg.equals(requestColor)).toBe(true)
       expect(responseSpan?.fg.equals(responseColor)).toBe(true)
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
+  test("repaints sequence colors after mounting without changing diagram text", async () => {
+    const initialColor = parseColor("#38BDF8")
+    const updatedColor = parseColor("#A78BFA")
+    const testRenderer = await createTestRenderer({ width: 60, height: 12 })
+
+    try {
+      const diagram = new SequenceDiagramRenderable(testRenderer.renderer, {
+        content: "sequenceDiagram\n  Browser->>Server: request",
+        requestColor: initialColor,
+      })
+
+      testRenderer.renderer.root.add(diagram)
+      await testRenderer.renderOnce()
+      const before = testRenderer.captureCharFrame()
+
+      diagram.batchUpdate(() => {
+        diagram.requestColor = updatedColor
+        diagram.lifelineColor = updatedColor
+      })
+      await testRenderer.renderOnce()
+      const spans = testRenderer.captureSpans().lines.flatMap((line) => line.spans)
+
+      expect(testRenderer.captureCharFrame()).toBe(before)
+      expect(spans.find((span) => span.text.includes("request"))?.fg.equals(updatedColor)).toBe(true)
     } finally {
       testRenderer.renderer.destroy()
     }

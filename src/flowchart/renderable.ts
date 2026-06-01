@@ -1,6 +1,7 @@
 import { RGBA, TextBufferRenderable, type BorderStyle, type ColorInput, type RenderContext } from "@opentui/core"
 import { diagramColorMapsEqual, normalizeDiagramColorMap } from "../core/color/map.js"
 import { parseDiagramRenderableColor, setDiagramRenderableColor } from "../core/adapter/renderable-color.js"
+import { DiagramRenderablePipeline } from "../core/adapter/renderable-pipeline.js"
 import { DEFAULT_BORDER_STYLE, renderFlowchartGrid } from "./drawing.js"
 import {
   normalizeFlowchartPulseFrame,
@@ -55,13 +56,9 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
   private _activeEdgeProgress?: number
   private _pulseLength: number
   private _pulseGap: number
-  private _navigationDiagram?: FlowchartDiagram
-  private _grid?: FlowchartGrid
   private _renderedWidth = 0
   private _renderedHeight = 0
-  private _batchDepth = 0
-  private _needsLayoutUpdate = false
-  private _needsStyleUpdate = false
+  private readonly _pipeline: DiagramRenderablePipeline<FlowchartDiagram, FlowchartGrid>
 
   constructor(ctx: RenderContext, options: FlowchartDiagramOptions = {}) {
     super(ctx, { ...options, wrapMode: options.wrapMode ?? "none" })
@@ -87,7 +84,13 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
     this._activeEdgeProgress = normalizeFlowchartPulseProgress(options.activeEdgeProgress)
     this._pulseLength = normalizeFlowchartPulseLength(options.pulseLength)
     this._pulseGap = normalizeFlowchartPulseGap(options.pulseGap)
-    this.updateDiagram()
+    this._pipeline = new DiagramRenderablePipeline({
+      parse: () => parseMermaidFlowchartDiagram(this._content),
+      draw: (diagram) => renderFlowchartGrid(diagram, this.renderOptions()),
+      didDraw: (grid) => this.updateRenderedSize(grid),
+      publish: (grid) => this.publishStyledText(grid),
+    })
+    this._pipeline.invalidateParsedDiagram()
   }
 
   get content(): string {
@@ -97,12 +100,11 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
   set content(value: string) {
     if (this._content === value) return
     this._content = value
-    this._navigationDiagram = undefined
     this._activeNode = undefined
     this._activeEdge = undefined
     this._selectedConnectionIndex = 0
     this._activeEdgeProgress = undefined
-    this.invalidateDiagram()
+    this._pipeline.invalidateParsedDiagram()
   }
 
   get renderedWidth(): number {
@@ -116,7 +118,6 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
   set direction(value: FlowchartDirection | undefined) {
     if (this._direction === value) return
     this._direction = value
-    this._navigationDiagram = undefined
     this.invalidateDiagram()
   }
 
@@ -311,11 +312,7 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
   }
 
   private parsedDiagram(): FlowchartDiagram {
-    if (!this._navigationDiagram) {
-      const diagram = parseMermaidFlowchartDiagram(this._content)
-      this._navigationDiagram = this._direction ? { ...diagram, direction: this._direction } : diagram
-    }
-    return this._navigationDiagram
+    return this._pipeline.diagram()
   }
 
   private activeOutgoingEdges(): IndexedFlowchartEdge[] {
@@ -333,36 +330,15 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
   }
 
   batchUpdate(update: () => void): void {
-    this._batchDepth += 1
-    try {
-      update()
-    } finally {
-      this._batchDepth -= 1
-      if (this._batchDepth === 0 && this._needsLayoutUpdate) {
-        this._needsLayoutUpdate = false
-        this._needsStyleUpdate = false
-        this.updateDiagram()
-      } else if (this._batchDepth === 0 && this._needsStyleUpdate) {
-        this._needsStyleUpdate = false
-        this.updateStyledText()
-      }
-    }
+    this._pipeline.batchUpdate(update)
   }
 
   private invalidateDiagram(): void {
-    if (this._batchDepth > 0) {
-      this._needsLayoutUpdate = true
-      return
-    }
-    this.updateDiagram()
+    this._pipeline.invalidateGrid()
   }
 
   private invalidateStyle(): void {
-    if (this._batchDepth > 0) {
-      this._needsStyleUpdate = true
-      return
-    }
-    this.updateStyledText()
+    this._pipeline.invalidateStyle()
   }
 
   private renderOptions(): FlowchartDiagramRenderOptions {
@@ -381,26 +357,13 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
     }
   }
 
-  private updateDiagram(): void {
-    const grid = renderFlowchartGrid(this.parsedDiagram(), this.renderOptions())
-    this._grid = grid
-    this.updateRenderedSize(grid)
-    this.updateStyledText()
-  }
-
   private updateRenderedSize(grid: FlowchartGrid): void {
     const size = grid.getTextSize({ trimTop: true, trimBottom: true })
     this._renderedWidth = size.width
     this._renderedHeight = size.height
   }
 
-  private updateStyledText(): void {
-    let grid = this._grid
-    if (!grid) {
-      grid = renderFlowchartGrid(this.parsedDiagram(), this.renderOptions())
-      this._grid = grid
-      this.updateRenderedSize(grid)
-    }
+  private publishStyledText(grid: FlowchartGrid): void {
     this.textBuffer.setStyledText(
       renderGridStyledText(
         grid,

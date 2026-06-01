@@ -42,7 +42,9 @@ src/
 │   └── index.ts         #   Public re-exports for this family
 ├── state/               # State diagrams
 │   ├── parser.ts        #   Mermaid string -> StateDiagram
+│   ├── visible-model.ts #   StateDiagram -> visible transitions/states for drawing
 │   ├── layout.ts        #   StateDiagram -> placed bounds
+│   ├── routing.ts       #   Visible State transitions -> route kinds for drawing
 │   ├── drawing.ts       #   StateDiagram -> styled diagram grid
 │   ├── style.ts         #   Themes, colors, pulse style ramps
 │   ├── render-grid.ts   #   Grid -> string / ANSI / StyledText
@@ -53,6 +55,7 @@ src/
 │   └── index.ts         #   Public re-exports for this family
 ├── sequence/            # Sequence diagrams
 │   ├── parser.ts        #   Mermaid string -> SequenceDiagram
+│   ├── placement.ts     #   SequenceDiagram -> static participant/step placement plan
 │   ├── drawing.ts       #   SequenceDiagram -> styled diagram grid
 │   ├── style.ts         #   Themes, colors, pulse style ramps
 │   ├── render-grid.ts   #   Grid -> string / ANSI / StyledText
@@ -69,7 +72,7 @@ src/
 │   ├── text.ts          #   Width-aware text helpers (string-width)
 │   ├── text-lines.ts    #   Wrapping / line splitting
 │   ├── mermaid.ts       #   Shared Mermaid line tokenization
-│   ├── adapter/         #   Adapters between OpenTUI and our color types
+│   ├── adapter/         #   OpenTUI color parsing and renderable invalidation pipeline
 │   ├── animation/       #   Pulse animation core (frame counter, cell styling)
 │   ├── color/           #   Color ramps, theme maps, fade levels
 │   └── terminal/        #   ANSI escape helpers

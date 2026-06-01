@@ -1,18 +1,19 @@
 import { TextBufferRenderable, type BorderStyle, type ColorInput, type RenderContext, type RGBA } from "@opentui/core"
 import { parseDiagramRenderableColor, setDiagramRenderableColor } from "../core/adapter/renderable-color.js"
+import { DiagramRenderablePipeline } from "../core/adapter/renderable-pipeline.js"
 import { brightenColor } from "../core/color/style.js"
 import { layoutSequenceDiagram } from "./drawing.js"
 import {
   DEFAULT_FRAGMENT_BORDER_STYLE,
-  DEFAULT_MIN_PARTICIPANT_GAP,
+  normalizeSequenceMinParticipantGap,
   normalizeSequencePulseFrame,
   normalizeSequencePulseGap,
   normalizeSequencePulseLength,
 } from "./options.js"
 import { parseMermaidSequenceDiagram } from "./parser.js"
-import { renderSequenceGridStyledText } from "./render-grid.js"
+import { renderSequenceGridStyledText, type SequenceGrid } from "./render-grid.js"
 import { resolveSequenceStyleColors } from "./style.js"
-import type { SequenceDiagramOptions } from "./types.js"
+import type { SequenceDiagram, SequenceDiagramOptions } from "./types.js"
 
 export class SequenceDiagramRenderable extends TextBufferRenderable {
   private _content: string
@@ -29,11 +30,12 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   private _pulseColor?: RGBA
   private _noteColor?: RGBA
   private _noteBackgroundColor?: RGBA
+  private readonly _pipeline: DiagramRenderablePipeline<SequenceDiagram, SequenceGrid>
 
   constructor(ctx: RenderContext, options: SequenceDiagramOptions = {}) {
     super(ctx, { ...options, wrapMode: options.wrapMode ?? "none" })
     this._content = options.content ?? ""
-    this._minParticipantGap = options.minParticipantGap ?? DEFAULT_MIN_PARTICIPANT_GAP
+    this._minParticipantGap = normalizeSequenceMinParticipantGap(options.minParticipantGap)
     this._fragmentBorderStyle = options.fragmentBorderStyle ?? DEFAULT_FRAGMENT_BORDER_STYLE
     this._pulseFrame = normalizeSequencePulseFrame(options.pulseFrame)
     this._pulseLength = normalizeSequencePulseLength(options.pulseLength)
@@ -46,7 +48,12 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     this._pulseColor = parseDiagramRenderableColor(options.pulseColor)
     this._noteColor = parseDiagramRenderableColor(options.noteColor)
     this._noteBackgroundColor = parseDiagramRenderableColor(options.noteBackgroundColor)
-    this.updateDiagram()
+    this._pipeline = new DiagramRenderablePipeline({
+      parse: () => parseMermaidSequenceDiagram(this._content),
+      draw: (diagram) => this.drawGrid(diagram),
+      publish: (grid) => this.publishStyledText(grid),
+    })
+    this._pipeline.invalidateParsedDiagram()
   }
 
   get content(): string {
@@ -56,7 +63,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   set content(value: string) {
     if (this._content === value) return
     this._content = value
-    this.updateDiagram()
+    this._pipeline.invalidateParsedDiagram()
   }
 
   get minParticipantGap(): number {
@@ -64,9 +71,10 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   }
 
   set minParticipantGap(value: number) {
-    if (this._minParticipantGap === value) return
-    this._minParticipantGap = value
-    this.updateDiagram()
+    const next = normalizeSequenceMinParticipantGap(value)
+    if (this._minParticipantGap === next) return
+    this._minParticipantGap = next
+    this._pipeline.invalidateGrid()
   }
 
   get fragmentBorderStyle(): BorderStyle {
@@ -77,7 +85,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     const next = value ?? DEFAULT_FRAGMENT_BORDER_STYLE
     if (this._fragmentBorderStyle === next) return
     this._fragmentBorderStyle = next
-    this.updateDiagram()
+    this._pipeline.invalidateGrid()
   }
 
   get pulseFrame(): number | undefined {
@@ -88,7 +96,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     const next = normalizeSequencePulseFrame(value)
     if (this._pulseFrame === next) return
     this._pulseFrame = next
-    this.updateDiagram()
+    this._pipeline.invalidateGrid()
   }
 
   get pulseLength(): number {
@@ -99,7 +107,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     const next = normalizeSequencePulseLength(value)
     if (this._pulseLength === next) return
     this._pulseLength = next
-    this.updateDiagram()
+    this._pipeline.invalidateGrid()
   }
 
   get pulseGap(): number {
@@ -110,7 +118,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     const next = normalizeSequencePulseGap(value)
     if (this._pulseGap === next) return
     this._pulseGap = next
-    this.updateDiagram()
+    this._pipeline.invalidateGrid()
   }
 
   get participantColor(): RGBA | undefined {
@@ -193,22 +201,29 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     })
   }
 
+  batchUpdate(update: () => void): void {
+    this._pipeline.batchUpdate(update)
+  }
+
   private setColor(
     current: RGBA | undefined,
     value: ColorInput | undefined,
     assign: (color: RGBA | undefined) => void,
   ): void {
-    setDiagramRenderableColor(current, value, assign, () => this.updateDiagram())
+    setDiagramRenderableColor(current, value, assign, () => this._pipeline.invalidateStyle())
   }
 
-  private updateDiagram(): void {
-    const grid = layoutSequenceDiagram(parseMermaidSequenceDiagram(this._content), {
+  private drawGrid(diagram: SequenceDiagram): SequenceGrid {
+    return layoutSequenceDiagram(diagram, {
       minParticipantGap: this._minParticipantGap,
       fragmentBorderStyle: this._fragmentBorderStyle,
       pulseFrame: this._pulseFrame,
       pulseLength: this._pulseLength,
       pulseGap: this._pulseGap,
     })
+  }
+
+  private publishStyledText(grid: SequenceGrid): void {
     this.textBuffer.setStyledText(
       renderSequenceGridStyledText(
         grid,
@@ -227,6 +242,5 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
       ),
     )
     this.updateTextInfo()
-    this.requestRender()
   }
 }

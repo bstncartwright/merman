@@ -151,6 +151,25 @@ stateDiagram-v2
     expect(diagram.direction).toBe("LR")
   })
 
+  test("normalizes mutable renderable state gaps before exposing them", async () => {
+    const testRenderer = await createTestRenderer({ width: 40, height: 8 })
+
+    try {
+      const diagram = new StateDiagramRenderable(testRenderer.renderer, {
+        content: "stateDiagram-v2\n  A --> B",
+        minStateGap: Number.NaN,
+      })
+
+      expect(diagram.minStateGap).toBe(5)
+      diagram.minStateGap = 0
+      expect(diagram.minStateGap).toBe(1)
+      diagram.minStateGap = 3.9
+      expect(diagram.minStateGap).toBe(3)
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
   test("places right-to-left transition labels between intact frames", () => {
     const output = renderStateDiagram(`stateDiagram-v2
   direction RL
@@ -445,6 +464,32 @@ stateDiagram-v2
       expect(labelSpan?.fg.equals(labelColor)).toBe(true)
       expect(fadeSpan?.fg.equals(stateColor)).toBe(false)
       expect(fadeSpan?.fg.equals(transitionColor)).toBe(false)
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
+  test("repaints state colors after mounting without changing diagram text", async () => {
+    const initialColor = parseColor("#86E1C8")
+    const updatedColor = parseColor("#38BDF8")
+    const testRenderer = await createTestRenderer({ width: 80, height: 8 })
+
+    try {
+      const diagram = new StateDiagramRenderable(testRenderer.renderer, {
+        content: "stateDiagram-v2\n  A --> B: next",
+        transitionColor: initialColor,
+      })
+
+      testRenderer.renderer.root.add(diagram)
+      await testRenderer.renderOnce()
+      const before = testRenderer.captureCharFrame()
+
+      diagram.transitionColor = updatedColor
+      await testRenderer.renderOnce()
+      const spans = testRenderer.captureSpans().lines.flatMap((line) => line.spans)
+
+      expect(testRenderer.captureCharFrame()).toBe(before)
+      expect(spans.some((span) => span.text.includes("▶") && span.fg.equals(updatedColor))).toBe(true)
     } finally {
       testRenderer.renderer.destroy()
     }

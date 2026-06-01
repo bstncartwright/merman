@@ -14,7 +14,6 @@ import {
 import {
   createStateDiagramLayout,
   expandCompositeBoundsForFeedback,
-  hasReverseTransition,
   measureStateTransitionLabel,
   type StateDiagramBoxBounds as BoxBounds,
   type StateDiagramNoteBounds as StateNoteBounds,
@@ -29,6 +28,7 @@ import {
   normalizeStatePulseProgress,
 } from "./options.js"
 import type { StateCellMetadata, StateGrid } from "./render-grid.js"
+import { createStateTransitionRoutePlans, isStateHorizontalFeedback, type StateTransitionRoutePlan } from "./routing.js"
 import {
   isStateActiveTransitionStyle,
   isStateTransitionFadeStyle,
@@ -49,9 +49,7 @@ import type {
   StateDiagramState,
   StateDiagramTransition,
 } from "./types.js"
-interface StateDiagramRenderTransition extends StateDiagramTransition {
-  sourceTransitions?: readonly StateDiagramTransition[]
-}
+import { isHiddenCompositeMarker, prepareVisibleStateDiagram } from "./visible-model.js"
 
 type StateCell = DiagramCanvasCell<StateCellStyle, StateCellMetadata>
 
@@ -134,89 +132,6 @@ function setText(
 
 function setTransitionLabel(grid: StateGrid, x: number, y: number, label: string, style: StateCellStyle): void {
   measureStateTransitionLabel(label).lines.forEach((line, index) => setText(grid, x, y + index, line, style))
-}
-
-function isHiddenCompositeMarker(state: StateDiagramState | undefined): boolean {
-  return Boolean(state?.parentId && (state.kind === "start" || state.kind === "end"))
-}
-
-function sourceTransitionsOf(transition: StateDiagramRenderTransition): readonly StateDiagramTransition[] {
-  return transition.sourceTransitions ?? [transition]
-}
-
-function composeTransitionLabel(incoming: StateDiagramTransition, outgoing: StateDiagramTransition): string {
-  return incoming.label || outgoing.label
-}
-
-function collapseHiddenCompositeMarkerTransitionsOnce(
-  transitions: readonly StateDiagramRenderTransition[],
-  statesById: ReadonlyMap<string, StateDiagramState>,
-): { transitions: StateDiagramRenderTransition[]; changed: boolean } {
-  const hiddenMarkers = new Set(
-    [...statesById.values()].filter((state) => isHiddenCompositeMarker(state)).map((state) => state.id),
-  )
-  if (hiddenMarkers.size === 0) return { transitions: [...transitions], changed: false }
-
-  const skipped = new Set<StateDiagramRenderTransition>()
-  const collapsed: StateDiagramRenderTransition[] = []
-  let changed = false
-
-  for (const markerId of hiddenMarkers) {
-    const incoming = transitions.filter((transition) => transition.to === markerId && transition.from !== markerId)
-    const outgoing = transitions.filter((transition) => transition.from === markerId && transition.to !== markerId)
-    if (incoming.length === 0 || outgoing.length === 0) continue
-
-    changed = true
-    for (const incomingTransition of incoming) {
-      skipped.add(incomingTransition)
-      for (const outgoingTransition of outgoing) {
-        skipped.add(outgoingTransition)
-        collapsed.push({
-          from: incomingTransition.from,
-          to: outgoingTransition.to,
-          label: composeTransitionLabel(incomingTransition, outgoingTransition),
-          sourceTransitions: [...sourceTransitionsOf(incomingTransition), ...sourceTransitionsOf(outgoingTransition)],
-        })
-      }
-    }
-  }
-
-  return {
-    transitions: [...transitions.filter((transition) => !skipped.has(transition)), ...collapsed],
-    changed,
-  }
-}
-
-function collapseHiddenCompositeMarkerTransitions(diagram: StateDiagram): StateDiagramRenderTransition[] {
-  const statesById = new Map(diagram.states.map((state) => [state.id, state]))
-  let transitions: StateDiagramRenderTransition[] = diagram.transitions.map((transition) => ({
-    ...transition,
-    sourceTransitions: [transition],
-  }))
-
-  while (true) {
-    const result = collapseHiddenCompositeMarkerTransitionsOnce(transitions, statesById)
-    transitions = result.transitions
-    if (!result.changed) return transitions
-  }
-}
-
-function createRenderDiagram(diagram: StateDiagram): StateDiagram {
-  const transitions = collapseHiddenCompositeMarkerTransitions(diagram)
-  const referencedHiddenMarkers = new Set<string>()
-  const statesById = new Map(diagram.states.map((state) => [state.id, state]))
-  for (const transition of transitions) {
-    const from = statesById.get(transition.from)
-    const to = statesById.get(transition.to)
-    if (from && isHiddenCompositeMarker(from)) referencedHiddenMarkers.add(from.id)
-    if (to && isHiddenCompositeMarker(to)) referencedHiddenMarkers.add(to.id)
-  }
-
-  return {
-    ...diagram,
-    states: diagram.states.filter((state) => !isHiddenCompositeMarker(state) || referencedHiddenMarkers.has(state.id)),
-    transitions,
-  }
 }
 
 function drawBox(
@@ -356,11 +271,6 @@ function transitionLabelStyle(active: boolean): StateCellStyle {
   return active ? "activeTransition" : "label"
 }
 
-function isHorizontalFeedback(diagram: StateDiagram, from: BoxBounds, to: BoxBounds): boolean {
-  if (diagram.direction === "RL") return to.centerX > from.centerX
-  return to.centerX < from.centerX
-}
-
 function transitionFadeCellStyle(context: TransitionDrawContext, distance: number): StateCellStyle {
   return stateTransitionFadeStyle(context.fadeSource, context.active, distance, context.fadeFromSource)
 }
@@ -449,49 +359,14 @@ function drawTopDeparture(grid: StateGrid, bounds: BoxBounds, x: number, context
   )
 }
 
-function drawHorizontal(
+function drawHorizontalForward(
   grid: StateGrid,
-  from: BoxBounds,
-  to: BoxBounds,
-  label: string,
-  transition: StateDiagramTransition,
-  diagram: StateDiagram,
-  feedbackLaneY: number,
+  plan: Extract<StateTransitionRoutePlan, { kind: "horizontal-forward" }>,
   arrowHeadStyle: StateDiagramArrowHeadStyle,
   context: TransitionDrawContext,
 ): void {
-  if (transition.from === transition.to) {
-    drawSelfTransition(grid, from, label, arrowHeadStyle, context)
-    return
-  }
-
-  const leftToRight = from.centerX <= to.centerX
-  const forwards = !isHorizontalFeedback(diagram, from, to)
-  const targetState = diagram.states.find((state) => state.id === transition.to)
-  const targetIsChoice = targetState?.kind === "choice" || isHiddenCompositeMarker(targetState)
-  if (from.centerY !== to.centerY) {
-    if (from.centerY > to.centerY && !forwards) {
-      drawBottomFeedback(grid, from, to, label, feedbackLaneY, arrowHeadStyle, targetIsChoice, context)
-      return
-    }
-    drawVerticalElbowTransition(
-      grid,
-      from,
-      to,
-      label,
-      hasReverseTransition(diagram, transition),
-      arrowHeadStyle,
-      targetIsChoice,
-      context,
-    )
-    return
-  }
-
-  if (!forwards) {
-    drawBottomFeedback(grid, from, to, label, feedbackLaneY, arrowHeadStyle, targetIsChoice, context)
-    return
-  }
-
+  const { from, to, targetIsChoice, leftToRight, transition } = plan
+  const label = transition.label
   const y = from.centerY
   const lineStyle = transitionLineStyle(context.active)
   if (leftToRight) drawRightDeparture(grid, from, context)
@@ -515,6 +390,40 @@ function drawHorizontal(
     const metrics = measureStateTransitionLabel(label)
     const labelX = Math.min(startX, endX) + Math.max(1, Math.floor((Math.abs(endX - startX) - metrics.width) / 2))
     setTransitionLabel(grid, labelX, Math.max(0, y - metrics.height), label, transitionLabelStyle(context.active))
+  }
+}
+
+function drawTransitionRoutePlan(
+  grid: StateGrid,
+  plan: StateTransitionRoutePlan,
+  arrowHeadStyle: StateDiagramArrowHeadStyle,
+  context: TransitionDrawContext,
+): void {
+  const { from, to, transition, targetIsChoice } = plan
+  switch (plan.kind) {
+    case "self":
+      drawSelfTransition(grid, from, transition.label, arrowHeadStyle, context)
+      return
+    case "horizontal-forward":
+      drawHorizontalForward(grid, plan, arrowHeadStyle, context)
+      return
+    case "bottom-feedback":
+      drawBottomFeedback(grid, from, to, transition.label, plan.railY, arrowHeadStyle, targetIsChoice, context)
+      return
+    case "vertical-elbow":
+      drawVerticalElbowTransition(
+        grid,
+        from,
+        to,
+        transition.label,
+        plan.hasReverse,
+        arrowHeadStyle,
+        targetIsChoice,
+        context,
+      )
+      return
+    case "vertical":
+      drawVertical(grid, from, to, transition.label, arrowHeadStyle, targetIsChoice, context)
   }
 }
 
@@ -751,7 +660,7 @@ function drawChoiceJunctions(
         if (targetBounds) {
           const feedback =
             (diagram.direction === "LR" || diagram.direction === "RL") &&
-            isHorizontalFeedback(diagram, choiceBounds, targetBounds)
+            isStateHorizontalFeedback(diagram, choiceBounds, targetBounds)
           connections.add(feedback ? "down" : connectionDirection(choiceBounds, targetBounds))
         }
         active = active || isActiveTransition(transition, activeTransitions)
@@ -957,7 +866,7 @@ function transitionFadeSource(
 
 export function layoutStateDiagram(sourceDiagram: StateDiagram, options: StateDiagramRenderOptions = {}): StateGrid {
   const directedDiagram = options.direction ? { ...sourceDiagram, direction: options.direction } : sourceDiagram
-  const diagram = createRenderDiagram(directedDiagram)
+  const diagram = prepareVisibleStateDiagram(directedDiagram)
   const borderStyle = options.borderStyle ?? DEFAULT_STATE_BORDER_STYLE
   const arrowHeadStyle = options.arrowHeadStyle ?? DEFAULT_STATE_ARROW_HEAD_STYLE
   const minStateGap = normalizeStateMinStateGap(options.minStateGap)
@@ -1004,16 +913,12 @@ export function layoutStateDiagram(sourceDiagram: StateDiagram, options: StateDi
     drawBox(grid, state, bound, size.lines, options.activeState === state.id, borderStyle)
   }
 
-  for (const transition of diagram.transitions) {
-    const from = bounds.get(transition.from)
-    const to = bounds.get(transition.to)
-    if (!from || !to) continue
+  for (const plan of createStateTransitionRoutePlans(diagram, bounds, feedbackLaneY)) {
+    const transition = plan.transition
     const fadeSource = transitionFadeSource(statesById, transition, options.activeState)
     const activeIndex = activeTransitionIndex(transition, activeTransitions)
     const active = activeIndex !== -1
     const fadeFromSource = activeIndex <= 0
-    const targetState = statesById.get(transition.to)
-    const targetIsChoice = targetState?.kind === "choice" || isHiddenCompositeMarker(targetState)
     const activePath: StatePathPoint[] | undefined = active ? [] : undefined
     const drawContext: TransitionDrawContext = {
       fadeSource,
@@ -1022,9 +927,7 @@ export function layoutStateDiagram(sourceDiagram: StateDiagram, options: StateDi
       path: activePath,
       sourceStateId: transition.from,
     }
-    if (diagram.direction === "LR" || diagram.direction === "RL")
-      drawHorizontal(grid, from, to, transition.label, transition, diagram, feedbackLaneY, arrowHeadStyle, drawContext)
-    else drawVertical(grid, from, to, transition.label, arrowHeadStyle, targetIsChoice, drawContext)
+    drawTransitionRoutePlan(grid, plan, arrowHeadStyle, drawContext)
 
     if (activePath?.length) activeTransitionPaths[activeIndex] = activePath
   }

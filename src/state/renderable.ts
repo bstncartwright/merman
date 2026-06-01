@@ -1,5 +1,6 @@
 import { TextBufferRenderable, type BorderStyle, type ColorInput, type RenderContext, type RGBA } from "@opentui/core"
 import { parseDiagramRenderableColor, setDiagramRenderableColor } from "../core/adapter/renderable-color.js"
+import { DiagramRenderablePipeline } from "../core/adapter/renderable-pipeline.js"
 import { diagramColorMapsEqual, normalizeDiagramColorMap } from "../core/color/map.js"
 import {
   activeTransitionListsEqual,
@@ -10,14 +11,14 @@ import { layoutStateDiagram } from "./drawing.js"
 import {
   DEFAULT_STATE_ARROW_HEAD_STYLE,
   DEFAULT_STATE_BORDER_STYLE,
-  DEFAULT_STATE_DIAGRAM_MIN_STATE_GAP,
+  normalizeStateMinStateGap,
   normalizeStatePulseFrame,
   normalizeStatePulseGap,
   normalizeStatePulseLength,
   normalizeStatePulseProgress,
 } from "./options.js"
 import { parseMermaidStateDiagram } from "./parser.js"
-import { renderStateGridStyledText } from "./render-grid.js"
+import { renderStateGridStyledText, type StateGrid } from "./render-grid.js"
 import { resolveStateStyleColors } from "./style.js"
 import type {
   StateDiagramActiveTransition,
@@ -27,6 +28,7 @@ import type {
   StateDiagramDirection,
   StateDiagramOptions,
   StateDiagramStateColors,
+  StateDiagram,
 } from "./types.js"
 
 export class StateDiagramRenderable extends TextBufferRenderable {
@@ -58,8 +60,7 @@ export class StateDiagramRenderable extends TextBufferRenderable {
   private _pulseProgress?: number
   private _pulseLength: number
   private _pulseGap: number
-  private _batchDepth = 0
-  private _needsUpdate = false
+  private readonly _pipeline: DiagramRenderablePipeline<StateDiagram, StateGrid>
 
   constructor(ctx: RenderContext, options: StateDiagramOptions = {}) {
     super(ctx, { ...options, wrapMode: options.wrapMode ?? "none" })
@@ -67,7 +68,7 @@ export class StateDiagramRenderable extends TextBufferRenderable {
     this._direction = options.direction
     this._borderStyle = options.borderStyle ?? DEFAULT_STATE_BORDER_STYLE
     this._arrowHeadStyle = options.arrowHeadStyle ?? DEFAULT_STATE_ARROW_HEAD_STYLE
-    this._minStateGap = options.minStateGap ?? DEFAULT_STATE_DIAGRAM_MIN_STATE_GAP
+    this._minStateGap = normalizeStateMinStateGap(options.minStateGap)
     this._activeState = options.activeState
     this._activeTransitions = normalizeActiveTransitions(options.activeTransition)
     this._activeTransitionProgress = normalizeStatePulseProgress(options.activeTransitionProgress)
@@ -91,7 +92,12 @@ export class StateDiagramRenderable extends TextBufferRenderable {
     this._pulseProgress = normalizeStatePulseProgress(options.pulseProgress)
     this._pulseLength = normalizeStatePulseLength(options.pulseLength)
     this._pulseGap = normalizeStatePulseGap(options.pulseGap)
-    this.updateDiagram()
+    this._pipeline = new DiagramRenderablePipeline({
+      parse: () => parseMermaidStateDiagram(this._content),
+      draw: (diagram) => this.drawGrid(diagram),
+      publish: (grid) => this.publishStyledText(grid),
+    })
+    this._pipeline.invalidateParsedDiagram()
   }
 
   get content(): string {
@@ -101,7 +107,7 @@ export class StateDiagramRenderable extends TextBufferRenderable {
   set content(value: string) {
     if (this._content === value) return
     this._content = value
-    this.invalidateDiagram()
+    this._pipeline.invalidateParsedDiagram()
   }
 
   get activeState(): string | undefined {
@@ -140,7 +146,7 @@ export class StateDiagramRenderable extends TextBufferRenderable {
   }
 
   set minStateGap(value: number | undefined) {
-    const next = value ?? DEFAULT_STATE_DIAGRAM_MIN_STATE_GAP
+    const next = normalizeStateMinStateGap(value)
     if (this._minStateGap === next) return
     this._minStateGap = next
     this.invalidateDiagram()
@@ -197,7 +203,7 @@ export class StateDiagramRenderable extends TextBufferRenderable {
     value: ColorInput | undefined,
     assign: (color: RGBA | undefined) => void,
   ): void {
-    setDiagramRenderableColor(current, value, assign, () => this.invalidateDiagram())
+    setDiagramRenderableColor(current, value, assign, () => this.invalidateStyle())
   }
 
   set stateColor(value: ColorInput | undefined) {
@@ -256,14 +262,14 @@ export class StateDiagramRenderable extends TextBufferRenderable {
     const next = normalizeDiagramColorMap(value)
     if (diagramColorMapsEqual(this._stateColors, next)) return
     this._stateColors = next
-    this.invalidateDiagram()
+    this.invalidateStyle()
   }
 
   set stateBgColors(value: StateDiagramStateColors | undefined) {
     const next = normalizeDiagramColorMap(value)
     if (diagramColorMapsEqual(this._stateBgColors, next)) return
     this._stateBgColors = next
-    this.invalidateDiagram()
+    this.invalidateStyle()
   }
 
   get pulseFrame(): number | undefined {
@@ -311,28 +317,19 @@ export class StateDiagramRenderable extends TextBufferRenderable {
   }
 
   batchUpdate(update: () => void): void {
-    this._batchDepth += 1
-    try {
-      update()
-    } finally {
-      this._batchDepth -= 1
-      if (this._batchDepth === 0 && this._needsUpdate) {
-        this._needsUpdate = false
-        this.updateDiagram()
-      }
-    }
+    this._pipeline.batchUpdate(update)
   }
 
   private invalidateDiagram(): void {
-    if (this._batchDepth > 0) {
-      this._needsUpdate = true
-      return
-    }
-    this.updateDiagram()
+    this._pipeline.invalidateGrid()
   }
 
-  private updateDiagram(): void {
-    const grid = layoutStateDiagram(parseMermaidStateDiagram(this._content), {
+  private invalidateStyle(): void {
+    this._pipeline.invalidateStyle()
+  }
+
+  private drawGrid(diagram: StateDiagram): StateGrid {
+    return layoutStateDiagram(diagram, {
       direction: this._direction,
       borderStyle: this._borderStyle,
       arrowHeadStyle: this._arrowHeadStyle,
@@ -346,6 +343,9 @@ export class StateDiagramRenderable extends TextBufferRenderable {
       pulseLength: this._pulseLength,
       pulseGap: this._pulseGap,
     })
+  }
+
+  private publishStyledText(grid: StateGrid): void {
     this.textBuffer.setStyledText(
       renderStateGridStyledText(
         grid,
@@ -369,6 +369,5 @@ export class StateDiagramRenderable extends TextBufferRenderable {
       ),
     )
     this.updateTextInfo()
-    this.requestRender()
   }
 }

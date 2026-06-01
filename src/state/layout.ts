@@ -1,5 +1,6 @@
 import { translateDiagramBounds } from "../core/geometry.js"
 import { diagramTextWidth, measureDiagramTextBox, splitDiagramLines } from "../core/text.js"
+import { hasReverseTransition, isStateHorizontalFeedback } from "./routing.js"
 import type {
   StateDiagram,
   StateDiagramCompositeState,
@@ -100,10 +101,6 @@ function reaches(diagram: StateDiagram, from: string, target: string): boolean {
     for (const transition of outgoing.get(id) ?? []) stack.push(transition.to)
   }
   return false
-}
-
-export function hasReverseTransition(diagram: StateDiagram, transition: StateDiagramTransition): boolean {
-  return diagram.transitions.some((other) => other.from === transition.to && other.to === transition.from)
 }
 
 function computeMainPath(diagram: StateDiagram): string[] {
@@ -605,7 +602,7 @@ export function expandCompositeBoundsForFeedback(
       if (!belongsToComposite(transition.to, composite.id, statesById, compositesById)) return false
       const from = bounds.get(transition.from)
       const to = bounds.get(transition.to)
-      return Boolean(from && to && (diagram.direction === "RL" ? from.centerX < to.centerX : from.centerX > to.centerX))
+      return Boolean(from && to && isStateHorizontalFeedback(diagram, from, to))
     })
     if (!hasInternalFeedback) continue
 
