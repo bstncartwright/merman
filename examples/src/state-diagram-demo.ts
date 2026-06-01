@@ -264,20 +264,22 @@ function shellThemeFor(theme: StateDiagramTheme): DemoShellTheme {
 function applyTheme(_renderer: CliRenderer): void {
   if (!diagram) return
   const theme = THEMES[themeIndex]!
-  diagram.fg = theme.foreground
-  diagram.bg = theme.background
-  diagram.stateColor = theme.state
-  diagram.activeStateColor = theme.activeState
-  diagram.compositeColor = theme.composite
-  diagram.transitionColor = theme.transition
-  diagram.labelColor = theme.transition
-  diagram.noteBorderColor = theme.noteBorder
-  diagram.noteTextColor = theme.noteText
-  diagram.noteConnectorColor = theme.noteConnector
-  diagram.pulseColor = theme.pulse
-  diagram.startColor = theme.transition
-  diagram.choiceColor = theme.transition
-  diagram.endColor = theme.end
+  diagram.batchUpdate(() => {
+    diagram!.fg = theme.foreground
+    diagram!.bg = theme.background
+    diagram!.stateColor = theme.state
+    diagram!.activeStateColor = theme.activeState
+    diagram!.compositeColor = theme.composite
+    diagram!.transitionColor = theme.transition
+    diagram!.labelColor = theme.transition
+    diagram!.noteBorderColor = theme.noteBorder
+    diagram!.noteTextColor = theme.noteText
+    diagram!.noteConnectorColor = theme.noteConnector
+    diagram!.pulseColor = theme.pulse
+    diagram!.startColor = theme.transition
+    diagram!.choiceColor = theme.transition
+    diagram!.endColor = theme.end
+  })
 
   shell?.setTheme(shellThemeFor(theme))
   updateFooter()

@@ -260,15 +260,17 @@ function selectExample(renderer: CliRenderer, nextExampleIndex: number): void {
 }
 
 function applyTheme(_renderer: CliRenderer, theme: SequenceDiagramTheme): void {
-  diagram!.fg = theme.foreground
-  diagram!.bg = theme.background
-  diagram!.participantColor = theme.participant
-  diagram!.lifelineColor = theme.lifeline
-  diagram!.groupColor = theme.group
-  diagram!.requestColor = theme.request
-  diagram!.responseColor = theme.response
-  diagram!.noteColor = theme.note
-  diagram!.noteBackgroundColor = theme.noteBackground
+  diagram!.batchUpdate(() => {
+    diagram!.fg = theme.foreground
+    diagram!.bg = theme.background
+    diagram!.participantColor = theme.participant
+    diagram!.lifelineColor = theme.lifeline
+    diagram!.groupColor = theme.group
+    diagram!.requestColor = theme.request
+    diagram!.responseColor = theme.response
+    diagram!.noteColor = theme.note
+    diagram!.noteBackgroundColor = theme.noteBackground
+  })
 
   shell?.setTheme(shellThemeFor(theme))
   const entries: FooterEntry[] = [

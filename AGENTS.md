@@ -139,6 +139,9 @@ examples workspace consumes `dist/` via the `exports` field.
 
 Set up once on npmjs.com (Trusted Publisher → GitHub Actions), then:
 
+Keep `"."` in `package.json`'s `workspaces` list: Changesets otherwise sees
+only the private examples workspace and cannot version the published root package.
+
 1. Add a changeset for each user-facing change and run `bun run version-packages` when preparing a release.
 2. Push a tag matching `vX.Y.Z`.
 3. `.github/workflows/publish.yml` builds, validates, and publishes via OIDC
