@@ -5,7 +5,8 @@ import packageJson from "../../package.json" with { type: "json" }
 import { firstMeaningfulMermaidLine } from "../core/mermaid.js"
 import { isMermaidFlowchartDiagram } from "../flowchart/parser.js"
 import { renderFlowchartDiagram, renderFlowchartDiagramAnsi } from "../flowchart/render.js"
-import { isMermaidSequenceDiagram, renderSequenceDiagram, renderSequenceDiagramAnsi } from "../sequence/diagram.js"
+import { renderSequenceDiagram, renderSequenceDiagramAnsi } from "../sequence/diagram.js"
+import { isMermaidSequenceDiagram } from "../sequence/parser.js"
 import { renderStateDiagram, renderStateDiagramAnsi } from "../state/diagram.js"
 import { isMermaidStateDiagram } from "../state/parser.js"
 

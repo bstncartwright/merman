@@ -17,7 +17,7 @@ export type {
   SequenceDiagramOptions as RenderableOptions,
 } from "./types.js"
 
-export { isMermaidSequenceDiagram as is, parseMermaidSequenceDiagram as parse } from "./diagram.js"
+export { isMermaidSequenceDiagram as is, parseMermaidSequenceDiagram as parse } from "./parser.js"
 export { SequenceDiagramRenderable as Renderable } from "./renderable.js"
 
 export interface RenderOptions extends SequenceDiagramAnsiOptions {

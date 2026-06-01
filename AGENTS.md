@@ -41,7 +41,13 @@ src/
 │   ├── types.ts         #   Public data model
 │   └── index.ts         #   Public re-exports for this family
 ├── state/               # State diagrams (parser, layout, render-grid, renderable)
-├── sequence/            # Sequence diagrams (single-file pipeline in diagram.ts)
+├── sequence/            # Sequence diagrams
+│   ├── parser.ts        #   Mermaid string -> SequenceDiagram
+│   ├── diagram.ts       #   Layout/drawing plus plain/ANSI rendering
+│   ├── renderable.ts    #   SequenceDiagramRenderable (OpenTUI)
+│   ├── options.ts       #   Defaults and option normalization
+│   ├── types.ts         #   Public data model and options
+│   └── index.ts         #   Public re-exports for this family
 ├── core/                # Package-internal primitives, NOT publicly exported
 │   ├── canvas.ts        #   DiagramCanvas: 2D char grid abstraction
 │   ├── geometry.ts      #   Boxes, points, intersection helpers

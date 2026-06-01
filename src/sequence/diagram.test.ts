@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { parseColor } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { expectDiagram } from "../test/diagram.js"
-import { parseMermaidSequenceDiagram, renderSequenceDiagram, renderSequenceDiagramAnsi } from "./diagram.js"
+import { renderSequenceDiagram, renderSequenceDiagramAnsi } from "./diagram.js"
+import { parseMermaidSequenceDiagram } from "./parser.js"
 import { SequenceDiagramRenderable } from "./renderable.js"
 
 describe("SequenceDiagram", () => {
