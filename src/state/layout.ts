@@ -42,6 +42,12 @@ export function splitStateDiagramLines(value: string): string[] {
   return splitDiagramLines(value)
 }
 
+export function measureStateTransitionLabel(label: string): { lines: string[]; width: number; height: number } {
+  if (!label) return { lines: [], width: 0, height: 0 }
+  const lines = splitStateDiagramLines(label)
+  return { lines, width: Math.max(...lines.map(visualLength)), height: lines.length }
+}
+
 function computeRanks(diagram: StateDiagram): Map<string, number> {
   const ranks = new Map<string, number>()
   const outgoing = new Map<string, string[]>()
@@ -420,6 +426,11 @@ export function createStateDiagramLayout(
   const rankKeys = [...byRank.keys()].sort((a, b) => a - b)
   const sizes = new Map(diagram.states.map((state) => [state.id, stateSize(state)]))
   const bounds = new Map<string, StateDiagramBoxBounds>()
+  const outgoingLabelRows = new Map<string, number>()
+  for (const transition of diagram.transitions) {
+    const rows = measureStateTransitionLabel(transition.label).height
+    outgoingLabelRows.set(transition.from, Math.max(outgoingLabelRows.get(transition.from) ?? 0, rows))
+  }
 
   const singleColumnCenter = Math.max(
     0,
@@ -448,7 +459,8 @@ export function createStateDiagramLayout(
       })
       x += size.width + options.minStateGap + 8
     }
-    y += rowHeight + 4
+    const labelRows = states.reduce((rows, state) => Math.max(rows, outgoingLabelRows.get(state.id) ?? 0), 0)
+    y += rowHeight + Math.max(4, labelRows + 3)
   }
 
   return finalizeLayout(diagram, emptyLayout(bounds, sizes))
@@ -460,10 +472,14 @@ function createHorizontalLayout(diagram: StateDiagram, options: StateDiagramLayo
   const statesById = new Map(diagram.states.map((state) => [state.id, state]))
   const mainPath = computeMainPath(diagram)
   const mainIds = new Set(mainPath)
-  const baselineY = 1
+  const baselineY = Math.max(
+    1,
+    ...diagram.transitions.map((transition) => measureStateTransitionLabel(transition.label).height),
+  )
+  const defaultGap = options.minStateGap + 8
   let x = 0
 
-  for (const id of mainPath) {
+  for (const [index, id] of mainPath.entries()) {
     const state = statesById.get(id)
     const size = sizes.get(id)
     if (!state || !size) continue
@@ -477,7 +493,11 @@ function createHorizontalLayout(diagram: StateDiagram, options: StateDiagramLayo
       centerX: x + Math.floor(size.width / 2),
       centerY: top + Math.floor(size.height / 2),
     })
-    x += size.width + options.minStateGap + 8
+    const nextId = mainPath[index + 1]
+    const adjacentLabelWidth = diagram.transitions
+      .filter((transition) => transition.from === id && transition.to === nextId)
+      .reduce((width, transition) => Math.max(width, measureStateTransitionLabel(transition.label).width), 0)
+    x += size.width + Math.max(defaultGap, adjacentLabelWidth + 2)
   }
 
   const branchesByParent = new Map<string, string[]>()
@@ -491,7 +511,7 @@ function createHorizontalLayout(diagram: StateDiagram, options: StateDiagramLayo
   for (const [parentId, branchIds] of branchesByParent) {
     const parent = bounds.get(parentId)
     if (!parent) continue
-    const branchGap = 4
+    const branchGap = defaultGap
     const branchSizes = branchIds.map((id) => sizes.get(id)!).filter(Boolean)
     const totalWidth =
       branchSizes.reduce((sum, size) => sum + size.width, 0) + Math.max(0, branchSizes.length - 1) * branchGap
@@ -520,7 +540,7 @@ function createHorizontalLayout(diagram: StateDiagram, options: StateDiagramLayo
     const size = sizes.get(state.id)!
     const rank = ranks.get(state.id) ?? bounds.size
     const top = baselineY + 5
-    const left = rank * (size.width + options.minStateGap + 8)
+    const left = rank * (size.width + defaultGap)
     bounds.set(state.id, {
       id: state.id,
       left,
@@ -537,6 +557,28 @@ function createHorizontalLayout(diagram: StateDiagram, options: StateDiagramLayo
     for (const bound of bounds.values()) {
       bound.left -= minX
       bound.centerX -= minX
+    }
+  }
+
+  if (diagram.direction === "RL") {
+    const right = Math.max(0, ...[...bounds.values()].map((bound) => bound.left + bound.width))
+    for (const bound of bounds.values()) {
+      bound.left = right - bound.left - bound.width
+      bound.centerX = bound.left + Math.floor(bound.width / 2)
+    }
+
+    const branchLabelGutter = Math.max(
+      0,
+      ...diagram.transitions.flatMap((transition) => {
+        const from = bounds.get(transition.from)
+        const to = bounds.get(transition.to)
+        return from && to && from.centerY !== to.centerY
+          ? [measureStateTransitionLabel(transition.label).width + 2]
+          : []
+      }),
+    )
+    if (branchLabelGutter > 0) {
+      shiftBounds(bounds.values(), branchLabelGutter, 0)
     }
   }
 
@@ -563,7 +605,7 @@ export function expandCompositeBoundsForFeedback(
       if (!belongsToComposite(transition.to, composite.id, statesById, compositesById)) return false
       const from = bounds.get(transition.from)
       const to = bounds.get(transition.to)
-      return Boolean(from && to && from.centerX > to.centerX)
+      return Boolean(from && to && (diagram.direction === "RL" ? from.centerX < to.centerX : from.centerX > to.centerX))
     })
     if (!hasInternalFeedback) continue
 

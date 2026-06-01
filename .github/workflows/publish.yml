@@ -43,15 +43,15 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.13"
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Upgrade npm (Trusted Publishers requires recent npm)
-        run: npm install -g npm@latest
+      - name: Install npm version supporting Trusted Publishers
+        run: npm install -g npm@11.5.1
 
       - name: Install
         run: bun install --frozen-lockfile
@@ -78,6 +78,9 @@ jobs:
         run: |
           bunx publint
           bunx attw --pack . --profile esm-only
+
+      - name: Smoke test packed artifact
+        run: bun run smoke:pack
 
       - name: Publish
         run: npm publish --provenance --access public

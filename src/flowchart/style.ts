@@ -156,8 +156,8 @@ export function renderGridStyledText(
 ): StyledText {
   const useNodeRuns = Boolean(nodeColors?.size || nodeBgColors?.size)
   const runOptions: DiagramCanvasRunOptions<FlowchartCellStyle, FlowchartCellMetadata> = useNodeRuns
-    ? { trimBottom: true, key: (cell) => [cell.style, cell.nodeId, cell.bgNodeId] }
-    : { trimBottom: true }
+    ? { trimTop: true, trimBottom: true, key: (cell) => [cell.style, cell.nodeId, cell.bgNodeId] }
+    : { trimTop: true, trimBottom: true }
   return renderDiagramGridStyledText(
     grid,
     (run) => styleColor(run.style, colors, nodeColors, run.cell.nodeId),
@@ -169,6 +169,7 @@ export function renderGridStyledText(
 export function renderGridAnsi(grid: FlowchartGrid, theme: FlowchartDiagramAnsiTheme = {}): string {
   const resolved = { ...DEFAULT_ANSI_THEME, ...theme }
   return renderDiagramGridAnsi(grid, (run) => (run.style ? resolved[run.style] : undefined), {
+    trimTop: true,
     trimBottom: true,
   })
 }

@@ -390,7 +390,7 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
   }
 
   private updateRenderedSize(grid: FlowchartGrid): void {
-    const size = grid.getTextSize({ trimBottom: true })
+    const size = grid.getTextSize({ trimTop: true, trimBottom: true })
     this._renderedWidth = size.width
     this._renderedHeight = size.height
   }

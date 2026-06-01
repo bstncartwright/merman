@@ -2,12 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { parseColor } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { expectDiagram } from "../test/diagram.js"
-import {
-  parseMermaidSequenceDiagram,
-  renderSequenceDiagram,
-  renderSequenceDiagramAnsi,
-  SequenceDiagramRenderable,
-} from "./diagram.js"
+import { parseMermaidSequenceDiagram, renderSequenceDiagram, renderSequenceDiagramAnsi } from "./diagram.js"
+import { SequenceDiagramRenderable } from "./renderable.js"
 
 describe("SequenceDiagram", () => {
   test("parses Mermaid sequenceDiagram participants and messages", () => {
@@ -219,6 +215,30 @@ sequenceDiagram
 
     expectDiagram(output).toContainInOrder("╭─ alt: accepted", "ok", "├─ else: rejected", "no", "╰")
     expect(output).not.toContain("end alt")
+  })
+
+  test("expands a fragment frame for a longer else label", () => {
+    const output = renderSequenceDiagram(`sequenceDiagram
+  A->>B: start
+  alt ok
+    A->>B: yes
+  else validation failed with a substantially longer explanation
+    B-->>A: no
+  end`)
+    const lines = output.split("\n")
+    const elseRow = lines.find((line) => line.includes("validation failed"))!
+    const endRow = [...lines].reverse().find((line) => line.includes("╰"))!
+
+    expect(elseRow.lastIndexOf("┤")).toBe(endRow.lastIndexOf("╯"))
+  })
+
+  test("preserves combined graphemes in participant names", () => {
+    const output = renderSequenceDiagram(`sequenceDiagram
+  participant A as Cafe\u0301
+  participant B
+  A->>B: hi`)
+
+    expect(output).toContain("Cafe\u0301")
   })
 
   test("renders fragment boxes with lifeline overhang", () => {

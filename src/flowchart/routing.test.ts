@@ -43,6 +43,27 @@ describe("flowchart routing", () => {
     ])
   })
 
+  test("routes a simple reverse horizontal edge into the target right port", () => {
+    const edge = { from: "A", to: "B", label: "" }
+    const routes = routeFlowchartEdges(
+      diagram("RL", [edge]),
+      new Map([
+        ["A", bounds("A", 20, 0)],
+        ["B", bounds("B", 0, 0)],
+      ]),
+    )
+
+    expect(routes).toEqual([
+      {
+        edge,
+        points: [
+          { x: 19, y: 1 },
+          { x: 5, y: 1 },
+        ],
+      },
+    ])
+  })
+
   test("routes horizontal fan-out through a shared bus lane", () => {
     const edges = [
       { from: "A", to: "B", label: "" },
@@ -156,6 +177,27 @@ describe("flowchart routing", () => {
         points: [
           { x: 22, y: 3 },
           { x: 22, y: 7 },
+        ],
+      },
+    ])
+  })
+
+  test("routes overlapping horizontal-flow columns through vertical ports", () => {
+    const edge = { from: "A", to: "B", label: "merge" }
+    const routes = routeFlowchartEdges(
+      diagram("RL", [edge]),
+      new Map([
+        ["A", bounds("A", 1, 8)],
+        ["B", bounds("B", 0, 0)],
+      ]),
+    )
+
+    expect(routes).toEqual([
+      {
+        edge,
+        points: [
+          { x: 2, y: 7 },
+          { x: 2, y: 3 },
         ],
       },
     ])

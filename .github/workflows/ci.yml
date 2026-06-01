@@ -19,7 +19,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.13"
 
       - name: Install
         run: bun install --frozen-lockfile
@@ -37,3 +37,6 @@ jobs:
         run: |
           bunx publint
           bunx attw --pack . --profile esm-only
+
+      - name: Smoke test packed artifact
+        run: bun run smoke:pack

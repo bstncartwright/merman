@@ -66,8 +66,9 @@ it from a consumer. There's an integrity test that enforces this by checking
 
 ## Conventions
 
-- **Bun-first.** Use `bun` / `bunx` (not `npm` / `npx`), `bun run test` (not
-  `bun test`) when invoking the script. Engine target is Node `>=20`.
+- **Bun runtime.** Use `bun` / `bunx` (not `npm` / `npx`), `bun run test` (not
+  `bun test`) when invoking the script. The current package entrypoint includes
+  OpenTUI runtime exports and requires Bun.
 - **ESM only.** All relative imports use the `.js` suffix (TypeScript NodeNext-
   style). `tsdown` outputs `.mjs` + `.d.mts`.
 - **No barrels in core.** `core/` modules import from each other directly, not
@@ -109,16 +110,16 @@ examples workspace consumes `dist/` via the `exports` field.
 2. If it lives in `core/`, decide whether it should actually be public; if
    yes, move it into `<family>/` first to keep `core/` package-internal.
 3. Run `bun run validate` — `attw` will surface broken type resolution.
-4. The version in `package.json` is `0.0.0` until first publish; bump and
-   tag on release.
+4. Add release metadata for user-facing changes and bump/tag only as part of
+   a release.
 
 ## Publishing
 
 Set up once on npmjs.com (Trusted Publisher → GitHub Actions), then:
 
-1. Bump `version` in `package.json`.
+1. Add a changeset for each user-facing change and run `bun run version-packages` when preparing a release.
 2. Push a tag matching `vX.Y.Z`.
-3. `.github/workflows/release.yml` builds, validates, and publishes via OIDC
+3. `.github/workflows/publish.yml` builds, validates, and publishes via OIDC
    (no `NPM_TOKEN` required).
 
 See the workflow file for the exact gating sequence.

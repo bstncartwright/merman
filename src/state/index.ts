@@ -19,7 +19,8 @@ export type {
   StateDiagramTransition as Transition,
 } from "./types.js"
 export { isMermaidStateDiagram as is, parseMermaidStateDiagram as parse } from "./parser.js"
-export { StateDiagramRenderable as Renderable, stateDiagramStateColorKey as stateColorKey } from "./diagram.js"
+export { StateDiagramRenderable as Renderable } from "./renderable.js"
+export { stateDiagramStateColorKey as stateColorKey } from "./style.js"
 
 export interface RenderOptions extends StateDiagramAnsiOptions {
   /** Emit ANSI color escapes. Default: `true`. Pass `false` for plain text. */

@@ -9,7 +9,8 @@
     "sequence": "bun src/sequence-diagram-demo.ts",
     "print:flowchart": "bun src/flowchart-demo.ts --print --plain",
     "print:state": "bun src/state-diagram-demo.ts --print --plain",
-    "print:sequence": "bun src/sequence-diagram-demo.ts --print --plain"
+    "print:sequence": "bun src/sequence-diagram-demo.ts --print --plain",
+    "print:gallery": "bun src/gallery.ts"
   },
   "dependencies": {
     "@kitlangton/merman": "file:..",

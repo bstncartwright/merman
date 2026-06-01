@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { StateDiagram } from "./diagram.js"
+import type { StateDiagram } from "./types.js"
 import { createStateDiagramLayout } from "./layout.js"
 
 describe("StateDiagramLayout", () => {
@@ -46,5 +46,31 @@ describe("StateDiagramLayout", () => {
 
     expect(note.left).toBeGreaterThanOrEqual(target.left + target.width)
     expect(note.lines).toEqual(["note"])
+  })
+
+  test("widens only the horizontal gap that carries a long label", () => {
+    const diagram: StateDiagram = {
+      direction: "LR",
+      states: [
+        { id: "A", label: "A", kind: "state" },
+        { id: "B", label: "B", kind: "state" },
+        { id: "C", label: "C", kind: "state" },
+      ],
+      transitions: [
+        { from: "A", to: "B", label: "a transition label requiring substantially more room" },
+        { from: "B", to: "C", label: "ok" },
+      ],
+      composites: [],
+      notes: [],
+    }
+
+    const layout = createStateDiagramLayout(diagram, { minStateGap: 5 })
+    const a = layout.bounds.get("A")!
+    const b = layout.bounds.get("B")!
+    const c = layout.bounds.get("C")!
+    const longGap = b.left - (a.left + a.width)
+    const shortGap = c.left - (b.left + b.width)
+
+    expect(longGap).toBeGreaterThan(shortGap)
   })
 })

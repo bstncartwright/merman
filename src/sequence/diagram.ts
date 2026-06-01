@@ -1,22 +1,7 @@
-import {
-  BorderChars,
-  RGBA,
-  type BorderStyle,
-  type ColorInput,
-  type RenderContext,
-  type StyledText,
-  TextBufferRenderable,
-  type TextBufferOptions,
-} from "@opentui/core"
+import { BorderChars, RGBA, type BorderStyle, type StyledText } from "@opentui/core"
 import { DiagramCanvas } from "../core/canvas.js"
 import { diagramPulseCellStyle, diagramPulseStyleLevel } from "../core/animation/pulse-cell.js"
-import { parseDiagramRenderableColor, setDiagramRenderableColor } from "../core/adapter/renderable-color.js"
-import {
-  normalizeDiagramPulseFrame,
-  normalizeDiagramPulseGap,
-  normalizeDiagramPulseLength,
-  visitDiagramPulsePath,
-} from "../core/animation/pulse.js"
+import { visitDiagramPulsePath } from "../core/animation/pulse.js"
 import {
   ansiBg,
   ansiFg,
@@ -27,7 +12,6 @@ import {
   createColorPeakAndRamp,
   DIAGRAM_FADE_STEPS,
   numberedStyleKeys,
-  type DiagramFadeStep,
   type DiagramRgb,
 } from "../core/color/style.js"
 import { diagramTextWidth } from "../core/text.js"
@@ -37,121 +21,43 @@ import {
   stripMermaidQuotes as stripQuotes,
 } from "../core/mermaid.js"
 import { renderDiagramGridAnsi, renderDiagramGridStyledText } from "../core/render-grid.js"
+import {
+  DEFAULT_FRAGMENT_BORDER_STYLE,
+  DEFAULT_MIN_PARTICIPANT_GAP,
+  normalizeSequencePulseFrame,
+  normalizeSequencePulseGap,
+  normalizeSequencePulseLength,
+} from "./options.js"
+import type {
+  AnsiSequenceCellStyle,
+  FadeStyle,
+  MessagePulseStyle,
+  MessageStyle,
+  PulseFadeStyle,
+  SequenceArrowHead,
+  SequenceCellStyle,
+  SequenceDiagram,
+  SequenceDiagramAnsiOptions,
+  SequenceDiagramAnsiTheme,
+  SequenceDiagramRenderOptions,
+  SequenceFragment,
+  SequenceMessage,
+  SequenceParticipant,
+  SequenceParticipantGroup,
+  SequenceStep,
+} from "./types.js"
+export type SequenceGrid = DiagramCanvas<SequenceCellStyle>
 
-export interface SequenceParticipant {
-  id: string
-  label: string
-}
-
-export interface SequenceParticipantGroup {
-  label: string
-  participantIds: string[]
-}
-
-export interface SequenceMessage {
-  from: string
-  to: string
-  label: string
-  style: "solid" | "dashed"
-  head?: SequenceArrowHead
-  number?: number
-  activate?: string
-  deactivate?: string
-}
-
-export type SequenceArrowHead = "open" | "cross" | "async"
-
-export interface SequenceNote {
-  over: string[]
-  label: string
-}
-
-export interface SequenceActivation {
-  participant: string
-  active: boolean
-}
-
-export interface SequenceFragment {
-  kind: "alt" | "else" | "loop" | "end"
-  label: string
-}
-
-export type SequenceStep =
-  | { type: "message"; message: SequenceMessage }
-  | { type: "note"; note: SequenceNote }
-  | { type: "activation"; activation: SequenceActivation }
-  | { type: "fragment"; fragment: SequenceFragment }
-
-export interface SequenceDiagram {
-  participants: SequenceParticipant[]
-  messages: SequenceMessage[]
-  steps: SequenceStep[]
-  groups: SequenceParticipantGroup[]
-}
-
-export interface SequenceDiagramRenderOptions {
-  minParticipantGap?: number
-  fragmentBorderStyle?: BorderStyle
-  pulseFrame?: number
-  pulseLength?: number
-  pulseGap?: number
-}
-
-export type SequenceDiagramAnsiTheme = Partial<Record<AnsiSequenceCellStyle, string>>
-
-export interface SequenceDiagramAnsiOptions extends SequenceDiagramRenderOptions {
-  theme?: SequenceDiagramAnsiTheme
-}
-
-export interface SequenceDiagramOptions extends TextBufferOptions {
-  content?: string
-  minParticipantGap?: number
-  fragmentBorderStyle?: BorderStyle
-  pulseFrame?: number
-  pulseLength?: number
-  pulseGap?: number
-  participantColor?: ColorInput
-  lifelineColor?: ColorInput
-  groupColor?: ColorInput
-  requestColor?: ColorInput
-  responseColor?: ColorInput
-  pulseColor?: ColorInput
-  noteColor?: ColorInput
-  noteBackgroundColor?: ColorInput
-}
-
-type MessageStyle = "request" | "response"
-type FadeStep = DiagramFadeStep
-type FadeStyle = `${MessageStyle}Fade${FadeStep}`
-type MessagePulseStyle = `${MessageStyle}Pulse`
-type PulseFadeStyle = `${MessageStyle}PulseFade${FadeStep}`
-type AnsiSequenceCellStyle =
-  | "participant"
-  | "lifeline"
-  | "group"
-  | MessageStyle
-  | FadeStyle
-  | MessagePulseStyle
-  | PulseFadeStyle
-  | "fragment"
-  | "fragmentLabel"
-  | "note"
-type SequenceCellStyle = AnsiSequenceCellStyle | "noteBadge"
-
-type SequenceGrid = DiagramCanvas<SequenceCellStyle>
-
-type SequenceStyleColors = Partial<Record<AnsiSequenceCellStyle, RGBA>> & {
+export type SequenceStyleColors = Partial<Record<AnsiSequenceCellStyle, RGBA>> & {
   noteBg?: RGBA
   fragmentLabelBg?: RGBA
   pulse?: RGBA
 }
 
-const DEFAULT_MIN_PARTICIPANT_GAP = 18
 const NOTE_HORIZONTAL_PADDING = 1
 const GROUP_HORIZONTAL_PADDING = 2
 const FRAGMENT_HORIZONTAL_OVERHANG = 3
 const SEQUENCE_BORDER = BorderChars.rounded
-const DEFAULT_FRAGMENT_BORDER_STYLE = "rounded" satisfies BorderStyle
 const FADE_STEPS = DIAGRAM_FADE_STEPS
 const PULSE_STYLES = {
   request: [
@@ -279,18 +185,6 @@ function arrowHeadChar(head: SequenceArrowHead | undefined, direction: 1 | -1): 
 
 function arrowHeadX(toX: number, direction: 1 | -1, head: SequenceArrowHead | undefined): number {
   return head === undefined ? toX : toX - direction
-}
-
-function normalizePulseFrame(value: number | undefined): number | undefined {
-  return normalizeDiagramPulseFrame(value)
-}
-
-function normalizePulseLength(value: number | undefined): number {
-  return normalizeDiagramPulseLength(value)
-}
-
-function normalizePulseGap(value: number | undefined): number {
-  return normalizeDiagramPulseGap(value)
 }
 
 function isBoxColorToken(value: string): boolean {
@@ -554,7 +448,7 @@ function createPulseStyleColors(
   return createColorPeakAndRamp(`${style}Pulse`, numberedStyleKeys(`${style}PulseFade`, FADE_STEPS), from, to)
 }
 
-function resolveSequenceStyleColors(colors: SequenceStyleColors): SequenceStyleColors {
+export function resolveSequenceStyleColors(colors: SequenceStyleColors): SequenceStyleColors {
   const requestPulse = colors.pulse ?? brightenColor(colors.request, 0.65)
   const responsePulse = colors.pulse ?? brightenColor(colors.response, 0.65)
 
@@ -718,7 +612,7 @@ function renderGridAnsi(grid: SequenceGrid, theme: SequenceDiagramAnsiTheme = {}
   return renderDiagramGridAnsi(grid, (run) => styleAnsi(run.style, resolvedTheme))
 }
 
-function renderGridStyledText(grid: SequenceGrid, colors: SequenceStyleColors): StyledText {
+export function renderGridStyledText(grid: SequenceGrid, colors: SequenceStyleColors): StyledText {
   return renderDiagramGridStyledText(
     grid,
     (run) => styleColor(run.style, colors),
@@ -814,6 +708,11 @@ interface SequenceHorizontalBounds {
 interface ActiveFragmentFrame {
   bounds: SequenceHorizontalBounds
   boundaryY: number
+}
+
+interface PendingFragmentFrame {
+  startIndex: number
+  bounds: SequenceHorizontalBounds
 }
 
 function groupLabelText(group: SequenceParticipantGroup): string {
@@ -929,29 +828,59 @@ function getDiagramContentBounds(
   return bounds
 }
 
-function getFragmentFrameBounds(centers: number[], fragment: SequenceFragment): SequenceHorizontalBounds | undefined {
+function getFragmentFrameBounds(
+  centers: number[],
+  fragment: SequenceFragment,
+  nestingDepth = 0,
+): SequenceHorizontalBounds | undefined {
   const leftParticipantX = centers[0]
   const rightParticipantX = centers[centers.length - 1]
   if (leftParticipantX === undefined || rightParticipantX === undefined) return undefined
 
-  const leftX = leftParticipantX - FRAGMENT_HORIZONTAL_OVERHANG
-  const participantRightX = rightParticipantX + FRAGMENT_HORIZONTAL_OVERHANG
+  const leftX = leftParticipantX - FRAGMENT_HORIZONTAL_OVERHANG + nestingDepth
+  const participantRightX = rightParticipantX + FRAGMENT_HORIZONTAL_OVERHANG - nestingDepth
   const label = fragmentLabelText(fragment)
   const rightX = Math.max(participantRightX, leftX + 2 + visualLength(label) + 1)
   return { leftX, rightX }
 }
 
-function getFragmentBounds(centers: number[], steps: SequenceStep[]): SequenceHorizontalBounds {
+function getFragmentBounds(boundsByStep: Iterable<SequenceHorizontalBounds>): SequenceHorizontalBounds {
   const bounds: SequenceHorizontalBounds = { leftX: 0, rightX: 0 }
 
-  for (const step of steps) {
-    if (step.type !== "fragment") continue
-    const fragmentBounds = getFragmentFrameBounds(centers, step.fragment)
-    if (!fragmentBounds) continue
+  for (const fragmentBounds of boundsByStep) {
     expandHorizontalBounds(bounds, fragmentBounds.leftX, fragmentBounds.rightX)
   }
 
   return bounds
+}
+
+function getFragmentFrameBoundsByStep(centers: number[], steps: SequenceStep[]): Map<number, SequenceHorizontalBounds> {
+  const boundsByStep = new Map<number, SequenceHorizontalBounds>()
+  const activeFrames: PendingFragmentFrame[] = []
+
+  for (const [index, step] of steps.entries()) {
+    if (step.type !== "fragment") continue
+    const bounds = getFragmentFrameBounds(centers, step.fragment, activeFrames.length)
+    if (!bounds) continue
+
+    if (step.fragment.kind === "alt" || step.fragment.kind === "loop") {
+      activeFrames.push({ startIndex: index, bounds: { ...bounds } })
+      continue
+    }
+
+    const frame = activeFrames[activeFrames.length - 1]
+    if (!frame) continue
+    expandHorizontalBounds(frame.bounds, bounds.leftX, bounds.rightX)
+    if (step.fragment.kind !== "end") continue
+
+    activeFrames.pop()
+    boundsByStep.set(frame.startIndex, frame.bounds)
+    const parent = activeFrames[activeFrames.length - 1]
+    if (parent) expandHorizontalBounds(parent.bounds, frame.bounds.leftX, frame.bounds.rightX)
+  }
+
+  for (const frame of activeFrames) boundsByStep.set(frame.startIndex, frame.bounds)
+  return boundsByStep
 }
 
 function groupVerticalChar(existing: string | undefined): string | undefined {
@@ -1140,14 +1069,14 @@ function resolveParticipantCenters(
   return centers
 }
 
-function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOptions = {}): SequenceGrid {
+export function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOptions = {}): SequenceGrid {
   const diagram = parseMermaidSequenceDiagram(content)
   if (diagram.participants.length === 0) return createGrid(0, 0)
   const participantIndexes = createParticipantIndexMap(diagram)
   const fragmentBorderStyle = options.fragmentBorderStyle ?? DEFAULT_FRAGMENT_BORDER_STYLE
-  const pulseFrame = normalizePulseFrame(options.pulseFrame)
-  const pulseLength = normalizePulseLength(options.pulseLength)
-  const pulseGap = normalizePulseGap(options.pulseGap)
+  const pulseFrame = normalizeSequencePulseFrame(options.pulseFrame)
+  const pulseLength = normalizeSequencePulseLength(options.pulseLength)
+  const pulseGap = normalizeSequencePulseGap(options.pulseGap)
 
   let centers = resolveParticipantCenters(
     diagram,
@@ -1157,7 +1086,8 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   const groupRanges = getGroupRanges(diagram, participantIndexes)
   let groupBounds = resolveGroupBounds(diagram, centers, participantIndexes, groupRanges)
   let contentBounds = getDiagramContentBounds(diagram, centers, participantIndexes)
-  let fragmentBounds = getFragmentBounds(centers, diagram.steps)
+  let fragmentFrameBounds = getFragmentFrameBoundsByStep(centers, diagram.steps)
+  let fragmentBounds = getFragmentBounds(fragmentFrameBounds.values())
   const groupLeftOverflow = groupBounds.reduce((leftmostX, bounds) => Math.min(leftmostX, bounds.leftX), 0)
   const leftOverflow = Math.min(groupLeftOverflow, contentBounds.leftX, fragmentBounds.leftX, 0)
 
@@ -1165,7 +1095,8 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
     centers = centers.map((center) => center - leftOverflow)
     groupBounds = resolveGroupBounds(diagram, centers, participantIndexes, groupRanges)
     contentBounds = getDiagramContentBounds(diagram, centers, participantIndexes)
-    fragmentBounds = getFragmentBounds(centers, diagram.steps)
+    fragmentFrameBounds = getFragmentFrameBoundsByStep(centers, diagram.steps)
+    fragmentBounds = getFragmentBounds(fragmentFrameBounds.values())
   }
 
   const hasGroups = groupBounds.length > 0
@@ -1215,7 +1146,7 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   let stepY = stepStartY
   const activeFragmentFrames: ActiveFragmentFrame[] = []
 
-  for (const step of diagram.steps) {
+  for (const [stepIndex, step] of diagram.steps.entries()) {
     if (step.type === "activation") {
       continue
     }
@@ -1238,7 +1169,14 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
     if (step.type === "fragment") {
       const stepHeight = getStepHeight(step)
       if (step.fragment.kind === "alt" || step.fragment.kind === "loop") {
-        const bounds = renderFragment(grid, centers, step.fragment, stepY, fragmentBorderStyle)
+        const bounds = renderFragment(
+          grid,
+          centers,
+          step.fragment,
+          stepY,
+          fragmentBorderStyle,
+          fragmentFrameBounds.get(stepIndex),
+        )
         if (bounds) {
           activeFragmentFrames.push({ bounds, boundaryY: stepY })
         }
@@ -1352,221 +1290,4 @@ export function renderSequenceDiagram(content: string, options: SequenceDiagramR
 
 export function renderSequenceDiagramAnsi(content: string, options: SequenceDiagramAnsiOptions = {}): string {
   return renderGridAnsi(layoutSequenceDiagram(content, options), options.theme)
-}
-
-export class SequenceDiagramRenderable extends TextBufferRenderable {
-  private _content: string
-  private _minParticipantGap: number
-  private _fragmentBorderStyle: BorderStyle
-  private _pulseFrame?: number
-  private _pulseLength: number
-  private _pulseGap: number
-  private _participantColor?: RGBA
-  private _lifelineColor?: RGBA
-  private _groupColor?: RGBA
-  private _requestColor?: RGBA
-  private _responseColor?: RGBA
-  private _pulseColor?: RGBA
-  private _noteColor?: RGBA
-  private _noteBackgroundColor?: RGBA
-
-  constructor(ctx: RenderContext, options: SequenceDiagramOptions = {}) {
-    super(ctx, { ...options, wrapMode: options.wrapMode ?? "none" })
-    this._content = options.content ?? ""
-    this._minParticipantGap = options.minParticipantGap ?? DEFAULT_MIN_PARTICIPANT_GAP
-    this._fragmentBorderStyle = options.fragmentBorderStyle ?? DEFAULT_FRAGMENT_BORDER_STYLE
-    this._pulseFrame = normalizePulseFrame(options.pulseFrame)
-    this._pulseLength = normalizePulseLength(options.pulseLength)
-    this._pulseGap = normalizePulseGap(options.pulseGap)
-    this._participantColor = parseDiagramRenderableColor(options.participantColor)
-    this._lifelineColor = parseDiagramRenderableColor(options.lifelineColor)
-    this._groupColor = parseDiagramRenderableColor(options.groupColor)
-    this._requestColor = parseDiagramRenderableColor(options.requestColor)
-    this._responseColor = parseDiagramRenderableColor(options.responseColor)
-    this._pulseColor = parseDiagramRenderableColor(options.pulseColor)
-    this._noteColor = parseDiagramRenderableColor(options.noteColor)
-    this._noteBackgroundColor = parseDiagramRenderableColor(options.noteBackgroundColor)
-    this.updateDiagram()
-  }
-
-  get content(): string {
-    return this._content
-  }
-
-  set content(value: string) {
-    if (this._content === value) return
-    this._content = value
-    this.updateDiagram()
-  }
-
-  get minParticipantGap(): number {
-    return this._minParticipantGap
-  }
-
-  set minParticipantGap(value: number) {
-    if (this._minParticipantGap === value) return
-    this._minParticipantGap = value
-    this.updateDiagram()
-  }
-
-  get fragmentBorderStyle(): BorderStyle {
-    return this._fragmentBorderStyle
-  }
-
-  set fragmentBorderStyle(value: BorderStyle | undefined) {
-    const next = value ?? DEFAULT_FRAGMENT_BORDER_STYLE
-    if (this._fragmentBorderStyle === next) return
-    this._fragmentBorderStyle = next
-    this.updateDiagram()
-  }
-
-  get pulseFrame(): number | undefined {
-    return this._pulseFrame
-  }
-
-  set pulseFrame(value: number | undefined) {
-    const next = normalizePulseFrame(value)
-    if (this._pulseFrame === next) return
-    this._pulseFrame = next
-    this.updateDiagram()
-  }
-
-  get pulseLength(): number {
-    return this._pulseLength
-  }
-
-  set pulseLength(value: number | undefined) {
-    const next = normalizePulseLength(value)
-    if (this._pulseLength === next) return
-    this._pulseLength = next
-    this.updateDiagram()
-  }
-
-  get pulseGap(): number {
-    return this._pulseGap
-  }
-
-  set pulseGap(value: number | undefined) {
-    const next = normalizePulseGap(value)
-    if (this._pulseGap === next) return
-    this._pulseGap = next
-    this.updateDiagram()
-  }
-
-  get participantColor(): RGBA | undefined {
-    return this._participantColor
-  }
-
-  set participantColor(value: ColorInput | undefined) {
-    this.setColor(this._participantColor, value, (color) => {
-      this._participantColor = color
-    })
-  }
-
-  get lifelineColor(): RGBA | undefined {
-    return this._lifelineColor
-  }
-
-  set lifelineColor(value: ColorInput | undefined) {
-    this.setColor(this._lifelineColor, value, (color) => {
-      this._lifelineColor = color
-    })
-  }
-
-  get groupColor(): RGBA | undefined {
-    return this._groupColor
-  }
-
-  set groupColor(value: ColorInput | undefined) {
-    this.setColor(this._groupColor, value, (color) => {
-      this._groupColor = color
-    })
-  }
-
-  get requestColor(): RGBA | undefined {
-    return this._requestColor
-  }
-
-  set requestColor(value: ColorInput | undefined) {
-    this.setColor(this._requestColor, value, (color) => {
-      this._requestColor = color
-    })
-  }
-
-  get responseColor(): RGBA | undefined {
-    return this._responseColor
-  }
-
-  set responseColor(value: ColorInput | undefined) {
-    this.setColor(this._responseColor, value, (color) => {
-      this._responseColor = color
-    })
-  }
-
-  get pulseColor(): RGBA | undefined {
-    return this._pulseColor
-  }
-
-  set pulseColor(value: ColorInput | undefined) {
-    this.setColor(this._pulseColor, value, (color) => {
-      this._pulseColor = color
-    })
-  }
-
-  get noteColor(): RGBA | undefined {
-    return this._noteColor
-  }
-
-  set noteColor(value: ColorInput | undefined) {
-    this.setColor(this._noteColor, value, (color) => {
-      this._noteColor = color
-    })
-  }
-
-  get noteBackgroundColor(): RGBA | undefined {
-    return this._noteBackgroundColor
-  }
-
-  set noteBackgroundColor(value: ColorInput | undefined) {
-    this.setColor(this._noteBackgroundColor, value, (color) => {
-      this._noteBackgroundColor = color
-    })
-  }
-
-  private setColor(
-    current: RGBA | undefined,
-    value: ColorInput | undefined,
-    assign: (color: RGBA | undefined) => void,
-  ): void {
-    setDiagramRenderableColor(current, value, assign, () => this.updateDiagram())
-  }
-
-  private updateDiagram(): void {
-    const grid = layoutSequenceDiagram(this._content, {
-      minParticipantGap: this._minParticipantGap,
-      fragmentBorderStyle: this._fragmentBorderStyle,
-      pulseFrame: this._pulseFrame,
-      pulseLength: this._pulseLength,
-      pulseGap: this._pulseGap,
-    })
-    this.textBuffer.setStyledText(
-      renderGridStyledText(
-        grid,
-        resolveSequenceStyleColors({
-          participant: this._participantColor,
-          lifeline: this._lifelineColor,
-          group: this._groupColor ?? brightenColor(this._lifelineColor, 0.08),
-          request: this._requestColor,
-          response: this._responseColor,
-          pulse: this._pulseColor,
-          fragment: brightenColor(this._lifelineColor, 0.18),
-          fragmentLabelBg: this._noteBackgroundColor,
-          note: this._noteColor,
-          noteBg: this._noteBackgroundColor,
-        }),
-      ),
-    )
-    this.updateTextInfo()
-    this.requestRender()
-  }
 }

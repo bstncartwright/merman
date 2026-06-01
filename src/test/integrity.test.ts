@@ -16,9 +16,12 @@ describe("package integrity", () => {
   })
 
   test("keeps core package-internal", async () => {
-    const entrypoint = await Bun.file("src/index.ts").text()
+    const publicEntrypoints = ["src/index.ts", "src/flowchart/index.ts", "src/state/index.ts", "src/sequence/index.ts"]
 
-    expect(entrypoint).not.toContain("./core/")
+    for (const entrypoint of publicEntrypoints) {
+      const source = await Bun.file(entrypoint).text()
+      expect(source).not.toMatch(/export\s+(?:\*|\{[^}]*\})\s+from\s+["'][^"']*core\//)
+    }
   })
 
   test("top-level surface exposes the namespace API", () => {
@@ -42,5 +45,12 @@ describe("package integrity", () => {
     expect(detect("not a diagram")).toBeUndefined()
     expect(isMermaid("flowchart LR\n  A --> B")).toBe(true)
     expect(isMermaid("not a diagram")).toBe(false)
+  })
+
+  test("top-level parse returns kind-tagged family diagrams", () => {
+    const parsed = parse("flowchart LR\n  A --> B")
+
+    expect(parsed.kind).toBe("flowchart")
+    if (parsed.kind === "flowchart") expect(parsed.diagram.nodes.map((node) => node.id)).toEqual(["A", "B"])
   })
 })

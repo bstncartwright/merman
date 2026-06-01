@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { parseColor, type CapturedFrame, type RGBA } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
+import stringWidth from "string-width"
 import { expectDiagram } from "../test/diagram.js"
-import {
-  parseMermaidStateDiagram,
-  renderStateDiagram,
-  renderStateDiagramAnsi,
-  StateDiagramRenderable,
-} from "./diagram.js"
+import { renderStateDiagram, renderStateDiagramAnsi } from "./diagram.js"
+import { parseMermaidStateDiagram } from "./parser.js"
+import { StateDiagramRenderable } from "./renderable.js"
 
 function cellsWithFg(frame: CapturedFrame, fg: RGBA): Array<{ x: number; y: number; char: string }> {
   const cells: Array<{ x: number; y: number; char: string }> = []
@@ -130,6 +128,55 @@ stateDiagram-v2
       ●────────────▶│ Idle ├────────────▶│ Loading ├────────────▶│ Success ├────────────▶◎
                     ╰──────╯             ╰─────────╯             ╰─────────╯
     `)
+  })
+
+  test("renders reverse horizontal direction from right to left", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction RL
+  A --> B`)
+    const labelRow = output.split("\n").find((line) => line.includes(" A ") && line.includes(" B "))!
+
+    expect(labelRow.indexOf("B")).toBeLessThan(labelRow.indexOf("A"))
+    expect(output).toContain("◀")
+  })
+
+  test("places right-to-left transition labels between intact frames", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction RL
+  A --> B: reopen after a very detailed reviewer comment`)
+
+    expect(output).toContain("╭───╮")
+    expect(output.match(/╭───╮/g)?.length).toBe(2)
+    expect(output).toContain("reopen after a very detailed reviewer comment")
+  })
+
+  test("keeps Unicode state labels inside their measured frame", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction LR
+  state "界" as Wide`)
+    const widths = output.split("\n").map((line) => stringWidth(line))
+
+    expect(new Set(widths).size).toBe(1)
+    expect(output).toContain("界")
+  })
+
+  test("reserves horizontal room for long transition labels", () => {
+    const label = "this transition label is much wider than the route"
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction LR
+  A --> B: ${label}`)
+    const labelRow = output.split("\n").find((line) => line.includes(label))!
+
+    expect(labelRow.match(/╭───╮/g)?.length).toBe(2)
+  })
+
+  test("renders every line of multiline transition labels", () => {
+    const output = renderStateDiagram(`stateDiagram-v2
+  direction LR
+  A --> B: first<br/>second`)
+
+    expect(output).toContain("first")
+    expect(output).toContain("second")
   })
 
   test("renders a vertical state diagram", () => {
@@ -687,6 +734,23 @@ stateDiagram-v2
     } finally {
       testRenderer.renderer.destroy()
     }
+  })
+
+  test("ignores stale active transition selections while animating matches", () => {
+    expect(() =>
+      renderStateDiagram(
+        `stateDiagram-v2
+  direction LR
+  A --> B`,
+        {
+          activeTransition: [
+            { from: "Missing", to: "Gone" },
+            { from: "A", to: "B" },
+          ],
+          pulseProgress: 0.5,
+        },
+      ),
+    ).not.toThrow()
   })
 
   test("moves active transition pulses in arrow direction", async () => {

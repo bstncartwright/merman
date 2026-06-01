@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { parseColor } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
+import stringWidth from "string-width"
 import { blendColor, colorsEqual, DIAGRAM_FADE_STEPS } from "../core/color/style.js"
 import { expectDiagram } from "../test/diagram.js"
 import { renderFlowchartGrid } from "./drawing.js"
@@ -11,7 +12,7 @@ import { renderFlowchartDiagram, renderFlowchartDiagramAnsi } from "./render.js"
 import { FlowchartDiagramRenderable } from "./renderable.js"
 
 function flowchartTextSize(content: string): { width: number; height: number } {
-  return renderFlowchartGrid(content).getTextSize({ trimBottom: true })
+  return renderFlowchartGrid(content).getTextSize({ trimTop: true, trimBottom: true })
 }
 
 function routeRunsAlongHorizontalBorder(
@@ -49,6 +50,31 @@ function routeRunsAlongVerticalBorder(
 }
 
 describe("FlowchartDiagram", () => {
+  test("keeps Unicode node labels inside their measured frame", () => {
+    const output = renderFlowchartDiagram(`flowchart LR
+  A[界]`)
+    const widths = output.split("\n").map((line) => stringWidth(line))
+
+    expect(new Set(widths).size).toBe(1)
+    expect(output).toContain("界")
+  })
+
+  test("does not draw reverse-flow arrowheads on a target's opposite side", () => {
+    const content = `flowchart RL
+  Parser[Parser] --> Output[Rendered]
+  Cache[(Cache)] --> Output
+  Parser --> Cache`
+    const output = renderFlowchartDiagram(content)
+    const layout = layoutFlowchartDiagram(content)
+    const outputBounds = layout.bounds.get("Output")!
+    const renderedRow = output.split("\n").find((line) => line.includes("Rendered"))!
+
+    const horizontalRoute = layout.routes.find((route) => route.edge.from === "Parser" && route.edge.to === "Output")!
+    expect(horizontalRoute.points.at(-1)?.x).toBe(outputBounds.left + outputBounds.width)
+    expect(renderedRow).toContain("│ Rendered │◀")
+    expect(renderedRow.trimStart().startsWith("◀")).toBe(false)
+  })
+
   test("parses Mermaid flowchart nodes and standard arrows", () => {
     const diagram = parseMermaidFlowchartDiagram(`
 flowchart TD

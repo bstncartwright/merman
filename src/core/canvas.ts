@@ -1,4 +1,5 @@
 import stringWidth from "string-width"
+import { diagramTextGraphemes } from "./text.js"
 
 export type DiagramCanvasCell<Style extends string, Metadata extends object = object> = {
   char: string
@@ -20,6 +21,7 @@ export interface DiagramCanvasOptions<Style extends string, Metadata extends obj
 }
 
 export interface DiagramCanvasTextOptions {
+  trimTop?: boolean
   trimBottom?: boolean
 }
 
@@ -28,8 +30,13 @@ export interface DiagramCanvasTextSize {
   height: number
 }
 
+export type DiagramCanvasTextMetadata<Metadata extends object> =
+  | Partial<Metadata>
+  | ((x: number, y: number) => Partial<Metadata>)
+
 export interface DiagramCanvasRunOptions<Style extends string, Metadata extends object = object> {
   key?: (cell: DiagramCanvasCell<Style, Metadata>) => readonly unknown[]
+  trimTop?: boolean
   trimBottom?: boolean
 }
 
@@ -70,12 +77,12 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
       .join("")
   }
 
-  private textRowCount(trimBottom: boolean): number {
-    let rowCount = this.rows.length
-    if (!trimBottom) return rowCount
-
-    while (rowCount > 0 && this.rowTextEnd(this.rows[rowCount - 1]!) === 0) rowCount -= 1
-    return rowCount
+  private textRowRange(trimTop: boolean, trimBottom: boolean): { start: number; end: number } {
+    let start = 0
+    let end = this.rows.length
+    if (trimTop) while (start < end && this.rowTextEnd(this.rows[start]!) === 0) start += 1
+    if (trimBottom) while (end > start && this.rowTextEnd(this.rows[end - 1]!) === 0) end -= 1
+    return { start, end }
   }
 
   setCell(x: number, y: number, char: string, style?: Style, metadata?: Partial<Metadata>): void {
@@ -89,32 +96,37 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     return this.rows[y]?.[x]
   }
 
-  setText(x: number, y: number, text: string, style?: Style, metadata?: Partial<Metadata>): void {
+  setText(x: number, y: number, text: string, style?: Style, metadata?: DiagramCanvasTextMetadata<Metadata>): void {
     let offset = 0
-    for (const char of text) {
-      this.setCell(x + offset, y, char, style, metadata)
-      offset += this.measure(char)
+    for (const grapheme of diagramTextGraphemes(text)) {
+      const width = Math.max(1, this.measure(grapheme))
+      const metadataAt = (cellX: number) => (typeof metadata === "function" ? metadata(cellX, y) : metadata)
+      this.setCell(x + offset, y, grapheme, style, metadataAt(x + offset))
+      for (let continuation = 1; continuation < width; continuation++) {
+        this.setCell(x + offset + continuation, y, "", style, metadataAt(x + offset + continuation))
+      }
+      offset += width
     }
   }
 
   toString(options: DiagramCanvasTextOptions = {}): string {
     const lines: string[] = []
-    const rowCount = this.textRowCount(options.trimBottom ?? false)
-    for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+    const rows = this.textRowRange(options.trimTop ?? false, options.trimBottom ?? false)
+    for (let rowIndex = rows.start; rowIndex < rows.end; rowIndex++) {
       lines.push(this.rowText(this.rows[rowIndex]!))
     }
     return lines.join("\n")
   }
 
   getTextSize(options: DiagramCanvasTextOptions = {}): DiagramCanvasTextSize {
-    const rowCount = this.textRowCount(options.trimBottom ?? false)
+    const rows = this.textRowRange(options.trimTop ?? false, options.trimBottom ?? false)
     let width = 0
-    for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+    for (let rowIndex = rows.start; rowIndex < rows.end; rowIndex++) {
       const row = this.rows[rowIndex]!
       const rowEnd = this.rowTextEnd(row)
       if (rowEnd > 0) width = Math.max(width, this.measure(this.rowText(row, rowEnd)))
     }
-    return { width, height: rowCount }
+    return { width, height: rows.end - rows.start }
   }
 
   forEachRun(
@@ -123,9 +135,9 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
     options: DiagramCanvasRunOptions<Style, Metadata> = {},
   ): void {
     const key = options.key
-    const rowCount = this.textRowCount(options.trimBottom ?? false)
+    const rows = this.textRowRange(options.trimTop ?? false, options.trimBottom ?? false)
 
-    for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+    for (let rowIndex = rows.start; rowIndex < rows.end; rowIndex++) {
       const row = this.rows[rowIndex]!
       const rowEnd = this.rowTextEnd(row)
 
@@ -151,7 +163,7 @@ export class DiagramCanvas<Style extends string, Metadata extends object = objec
       }
 
       flush()
-      if (rowIndex < rowCount - 1) onLineEnd()
+      if (rowIndex < rows.end - 1) onLineEnd()
     }
   }
 }

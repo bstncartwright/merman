@@ -83,11 +83,7 @@ function setNodeText(
   text: string,
   style: FlowchartCellStyle,
 ): void {
-  let offset = 0
-  for (const char of text) {
-    grid.setCell(x + offset, y, char, style, nodeMetadataForCell(bounds, nodeId, x + offset, y))
-    offset += visualLength(char)
-  }
+  grid.setText(x, y, text, style, (cellX, cellY) => nodeMetadataForCell(bounds, nodeId, cellX, cellY))
 }
 
 function nodeMetadataForCell(
@@ -564,5 +560,5 @@ export function renderFlowchartGrid(content: string, options: FlowchartDiagramRe
 }
 
 export function renderGridText(grid: FlowchartGrid): string {
-  return grid.toString({ trimBottom: true })
+  return grid.toString({ trimTop: true, trimBottom: true })
 }

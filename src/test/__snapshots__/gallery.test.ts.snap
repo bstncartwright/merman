@@ -1,0 +1,309 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`rendering gallery Flowchart / Unicode and crossings 1`] = `
+"                    ╭──────╮
+            ╭──────▶│ 界面 ├───────╮
+            │       ╰──────╯       │
+            │                      │
+╭───────╮   │                      │    ╭──────╮
+│ Start ├───┤                      ╰───▶│ Café │
+╰───────╯   │                           ╰──────╯
+            │
+            │      ╭─────────╮
+            ╰─────▶│ ship 🚢 │
+                   ╰─────────╯"
+`;
+
+exports[`rendering gallery Flowchart / nested grouping and feedback 1`] = `
+"╭─ Terminal Runtime ─────────────────────────────────────────────────╮
+│                                                         ╭────────╮ │
+│ ╭───────╮    ╭────────╮                                 ├────────┤ │
+│ │ Parse ├───▶│ Layout ├─── retry with a wider label ────┤ Render │ │
+│ ╰───────╯    ╰────────╯                                 ├────────┤ │
+│                                                         ╰────────╯ │
+╰────────────────────────────────────────────────────────────────────╯"
+`;
+
+exports[`rendering gallery Flowchart / vertical branching and multiline Unicode 1`] = `
+"                         ╭─────────╮
+                         │ Upload  │
+╭───────────────────────▶│ 界 file │
+│                        ╰────┬────╯
+│                             │
+│          ╭─ valid payload ──┴ invalid payload ╮
+│          │                                    │
+│          ▼                                    ▼
+│     ╭─────────╮                           ╭───────╮
+│     ├─────────┤                         ╭─╯       ╰─╮
+╰─────│ Archive │─ yes ───────────────────┤  Retry?   │
+      ├─────────┤                         ╰─╮       ╭─╯
+      ╰─────────╯                           ╰───┬───╯
+                                                │
+                              ╭────── no ───────╯
+                              │
+                              ▼
+                          ╭──────╮
+                          │ Stop │
+                          ╰──────╯"
+`;
+
+exports[`rendering gallery Flowchart / reverse horizontal branch and merge 1`] = `
+"╭──────────╮
+│ Rendered │◀─────╮
+╰──────────╯      │
+      ▲           │
+      │           │
+      │           │   ╭────────╮          ╭────────────────╮
+      │           ├───┤ Parser │◀─────────┤ Mermaid Source │
+      │           │   ╰────────╯          ╰────────────────╯
+ ╭────┴──╮        │
+ ├───────┤        │
+ │ Cache │◀───────╯
+ ├───────┤
+ ╰───────╯"
+`;
+
+exports[`rendering gallery Flowchart / simple reverse horizontal edge 1`] = `
+"╭──────────╮          ╭────────╮
+│ Rendered │◀─────────┤ Parser │
+╰──────────╯          ╰────────╯"
+`;
+
+exports[`rendering gallery State / reverse direction and long labels 1`] = `
+"                   ╭────────╮ reopen after a very detailed reviewer comment ╭───────────╮
+                   │ Review │◀──────────────────────────────────────────────┤ Published │
+                   ╰──┬─────╯                                               ╰───────────╯
+                      │    ▲───╮
+   changes requested  │        │
+                     ▼╯        │
+                   ╭───────╮   │
+                   │ Draft │   │
+                   ╰───┬───╯   │
+                       │       │
+                       │       │
+                       │       │ resubmit
+                       ╰───────╯"
+`;
+
+exports[`rendering gallery State / reciprocal narrow routes in reverse direction 1`] = `
+"      ╭───╮             ╭───╮
+      │ B │◀────────────┤ A │
+      ╰┬──╯             ╰───╯
+       │ ▲
+ down  │ │
+       ▼ │  back
+      ╭──┴╮
+      │ C │
+      ╰───╯"
+`;
+
+exports[`rendering gallery State / multiline transition labels 1`] = `
+"          submit changes
+╭───────╮ after validation ╭────────╮  approve    ╭───────────╮
+│ Draft ├─────────────────▶│ Review ├────────────▶│ Published │
+╰───────╯                  ╰────────╯             ╰───────────╯"
+`;
+
+exports[`rendering gallery State / vertical multiline labels and note 1`] = `
+"   ╭───────╮
+   │ Draft │
+   ╰───┬───╯
+       │
+       │ submit changes
+       │ with complete context
+       │
+       ▼
+╭────────────╮    ╔═══════════════════════════╗
+│ Validation │════╣ reviewer sees 界 and Café ║
+╰──────┬─────╯    ╚═══════════════════════════╝
+       │
+       │ approve
+       │
+       ▼
+ ╭───────────╮
+ │ Published │
+ ╰───────────╯"
+`;
+
+exports[`rendering gallery State / choice split and repair loop 1`] = `
+"              ╭─────────╮  validate       clean     ╭───────────╮
+●────────────▶│ Editing ├─────────────┬────────────▶│ Published │
+              ╰─────────╯             │             ╰───────────╯
+               ▲                      │ rejected
+               │                      │
+               │                      ▼
+               │                 ╭────────╮
+               │                 │ Errors │
+               │                 ╰────┬───╯
+               │                      │
+               │                      │
+               │       repair         │
+               ╰──────────────────────╯"
+`;
+
+exports[`rendering gallery State / reverse choice split 1`] = `
+"          ╭───────────╮   clean        validate   ╭─────────╮
+          │ Published │◀────────────┬─────────────┤ Editing │◀────────────●
+          ╰───────────╯             │             ╰─────────╯
+                                    │ rejected
+                                    │
+                                    ╰▼
+                                ╭────────╮
+                                │ Errors │
+                                ╰────────╯"
+`;
+
+exports[`rendering gallery State / reverse composite straight route 1`] = `
+"╭─ Runtime ────────────────────────╮
+│                                  │
+│ ╭────────╮   format    ╭───────╮ │
+│ │ Render │◀────────────┤ Parse │ │
+│ ╰────────╯             ╰───────╯ │
+│                                  │
+╰──────────────────────────────────╯"
+`;
+
+exports[`rendering gallery State / composites, choices, notes, and Unicode 1`] = `
+"╭─ Socket ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                              ╔═════════════════════════╗ │
+│                                                                                          ╔═══╣ wide label / 界面 cache ║ │
+│                                                                                          ║   ╚═════════════════════════╝ │
+│                                                                                          ║                               │
+│                                                                                          ║                               │
+│                 ╭────────────╮    open     ╭───────────╮ retry with Café / 界 ╭─────────╮               ready            │       success    ╭──────────╮
+│   ─────────────▶│ Connecting ├────────────▶│ Connected ├─────────────────────▶│ Backoff ├──────────────────────────────────────────────────▶│ Complete │
+│                 ╰────────────╯             ╰───────────╯                      ╰────┬────╯                                │                  ╰──────────╯
+│                  ▲                                                                 │                                     │
+│                  │                                                                 │                                     │
+│                  │                                                                 │                                     │
+│                  │                                                                 │                                     │
+│                  │                             timer                               │                                     │
+│                  ╰─────────────────────────────────────────────────────────────────╯                                     │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯"
+`;
+
+exports[`rendering gallery Sequence / long alternate branch 1`] = `
+"╭───────╮                 ╭──────────╮
+│ UI 界 │                 │ Café API │
+╰───┬───╯                 ╰─────┬────╯
+    │                           │
+    │ submit request            │
+    ├───────────────────────────▶
+    │                           │
+ ╭─ alt: ok ──────────────────────────────────────────────────────────╮
+ │  │                           │                                     │
+ │  │ accepted                  │                                     │
+ │  ◀───────────────────────────┤                                     │
+ │  │                           │                                     │
+ ├─ else: validation failed with a substantially longer explanation ──┤
+ │  │                           │                                     │
+ │  │ retry with corrections    │                                     │
+ │  ◀───────────────────────────┤                                     │
+ │  │                           │                                     │
+ ╰────────────────────────────────────────────────────────────────────╯
+    │                           │"
+`;
+
+exports[`rendering gallery Sequence / groups, notes, activation, and self-message 1`] = `
+"╭─ Frontend ───────────────────╮    ╭─ Backend ────────────────────────╮
+│ ╭─────────╮        ╭───────╮ │    │ ╭─────────╮                      │
+│ │ Browser │        │ Cache │ │    │ │ Service │                      │
+│ ╰────┬────╯        ╰───┬───╯ │    │ ╰────┬────╯                      │
+│      │                 │     │    │      │                           │
+│      │ fetch document  │     │    │      │                           │
+│      ├───────────────────────────────────▶                           │
+│      │                 │     │    │      │                           │
+│      │                 │     │    │      ├─────────────────────────╮ │
+│      │                 │     │    │      │ validate and normalize  │ │
+│      │                 │     │    │      ◀─────────────────────────╯ │
+│      │                 │     │    │      │                           │
+│      │                 │     │    │      │                           │
+│      │ response contains a wide 界 glyph │                           │
+│      │                 │     │    │      │                           │
+│      │ complete        │     │    │      │                           │
+│      ◀───────────────────────────────────┤                           │
+│      │                 │     │    │      │                           │
+╰──────────────────────────────╯    ╰──────────────────────────────────╯"
+`;
+
+exports[`rendering gallery Sequence / nested fragments and multiline messages 1`] = `
+"╭────────╮         ╭────────╮         ╭───────╮
+│ Client │         │ Worker │         │ Store │
+╰────┬───╯         ╰────┬───╯         ╰───┬───╯
+     │                  │                 │
+  ╭─ alt: cached ────────────────────────────╮
+  │  │                  │                 │  │
+  │  │ return cached    │                 │  │
+  │  │ Café result      │                 │  │
+  │  ◀──────────────────┤                 │  │
+  │  │                  │                 │  │
+  ├─ else: rebuild requested ────────────────┤
+  │  │                  │                 │  │
+  │╭─ ↻ loop: retry while unavailable ──────╮│
+  ││ │                  │                 │ ││
+  ││ │                  │ refresh         │ ││
+  ││ │                  │ 界 index        │ ││
+  ││ │                  ├─────────────────▶ ││
+  ││ │                  │                 │ ││
+  ││ │                  │ ready           │ ││
+  ││ │                  ◀─────────────────┤ ││
+  ││ │                  │                 │ ││
+  │╰────────────────────────────────────────╯│
+  │  │                  │                 │  │
+  │  │ complete         │                 │  │
+  │  ◀──────────────────┤                 │  │
+  │  │                  │                 │  │
+  ╰──────────────────────────────────────────╯
+     │                  │                 │"
+`;
+
+exports[`rendering gallery Sequence / separate compact and wide fragments 1`] = `
+" ╭───╮             ╭───╮
+ │ A │             │ B │
+ ╰─┬─╯             ╰─┬─╯
+   │                 │
+╭─ alt: ok ─────────────╮
+│  │                 │  │
+│  │ first           │  │
+│  ├─────────────────▶  │
+│  │                 │  │
+├─ else: no ────────────┤
+│  │                 │  │
+│  │ retry           │  │
+│  ◀─────────────────┤  │
+│  │                 │  │
+╰───────────────────────╯
+   │                 │
+╭─ alt: accepted ─────────────────────────────────────────╮
+│  │                 │                                    │
+│  │ next            │                                    │
+│  ├─────────────────▶                                    │
+│  │                 │                                    │
+├─ else: validation failed with a very long explanation ──┤
+│  │                 │                                    │
+│  │ repair          │                                    │
+│  ◀─────────────────┤                                    │
+│  │                 │                                    │
+╰─────────────────────────────────────────────────────────╯
+   │                 │"
+`;
+
+exports[`rendering gallery Sequence / long self-call and spanning note 1`] = `
+"╭─────────╮                                 ╭─────────╮
+│ Browser │                                 │ Runtime │
+╰────┬────╯                                 ╰────┬────╯
+     │                                           │
+     │ render                                    │
+     ├───────────────────────────────────────────▶
+     │                                           │
+     │                                           ├────────────────────────────────────────────────────╮
+     │                                           │ measure a substantially longer Unicode label 界面  │
+     │                                           ◀────────────────────────────────────────────────────╯
+     │                                           │
+     │                                           │
+     │  stable terminal widths for Café and 界   │
+     │                                           │
+     │ done                                      │
+     ◀───────────────────────────────────────────┤
+     │                                           │"
+`;

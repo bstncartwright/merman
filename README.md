@@ -134,7 +134,8 @@ bun add @kitlangton/merman @opentui/core
 npm install @kitlangton/merman @opentui/core
 ```
 
-ESM only. The library requires Node `>=20` or any current Bun.
+ESM only. The current library entrypoint requires Bun because it includes
+OpenTUI-backed renderables alongside plain and ANSI rendering helpers.
 
 `render` takes any Mermaid string — the leading `flowchart`/`sequenceDiagram`/
 `stateDiagram-v2` line picks the right renderer for you.
@@ -178,16 +179,16 @@ import { parse, isMermaid } from "@kitlangton/merman"
 
 isMermaid(content) // boolean — looks like any supported diagram?
 
-const diagram = parse(content) // discriminated union
-switch (diagram.kind) {
+const parsed = parse(content) // { kind, diagram } discriminated union
+switch (parsed.kind) {
   case "flowchart":
-    diagram.nodes.forEach(/* ... */)
+    parsed.diagram.nodes.forEach(/* ... */)
     break
   case "sequence":
-    diagram.steps.forEach(/* ... */)
+    parsed.diagram.steps.forEach(/* ... */)
     break
   case "state":
-    diagram.states.forEach(/* ... */)
+    parsed.diagram.states.forEach(/* ... */)
     break
 }
 ```
@@ -214,9 +215,12 @@ const diagram = new Flowchart.Renderable(renderer, {
 renderer.root.add(diagram)
 ```
 
-`Sequence.Renderable` and `State.Renderable` follow the same pattern. Each
-exposes theme setters, active-node/edge highlighting, and a `pulseFrame` for
-animated edge pulses. See the demos in [`examples/`](./examples).
+`Sequence.Renderable` and `State.Renderable` follow the same construction
+pattern. All three renderables expose color controls and `pulseFrame` for
+animated paths. `Flowchart.Renderable` supports active nodes and edges;
+`State.Renderable` supports active states and transitions; sequence diagrams
+currently expose message pulse animation without active-selection controls.
+See the demos in [`examples/`](./examples).
 
 ## React
 
@@ -232,6 +236,7 @@ bun run examples              # master demo: pick a sub-demo, Esc to go back
 bun run examples:flowchart    # individual demos
 bun run examples:state
 bun run examples:sequence
+bun run examples:gallery      # adversarial plain-text gallery for visual review
 ```
 
 ## Development

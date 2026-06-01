@@ -13,6 +13,12 @@ export function diagramTextWidth(value: string): number {
   return stringWidth(value)
 }
 
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" })
+
+export function* diagramTextGraphemes(value: string): Generator<string> {
+  for (const { segment } of graphemeSegmenter.segment(value)) yield segment
+}
+
 export function measureDiagramTextBox(
   value: string,
   options: { paddingX?: number; paddingY?: number; minInnerWidth?: number } = {},

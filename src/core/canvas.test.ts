@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import stringWidth from "string-width"
 import { DiagramCanvas, type DiagramCanvasCell } from "./canvas.js"
 
 describe("DiagramCanvas", () => {
@@ -17,7 +18,17 @@ describe("DiagramCanvas", () => {
 
     canvas.setText(0, 0, "a界b", "label")
 
-    expect(canvas.toString()).toBe("a界 b")
+    expect(canvas.toString()).toBe("a界b")
+    expect(stringWidth(canvas.toString())).toBe(4)
+  })
+
+  test("preserves combined graphemes while placing later text", () => {
+    const canvas = new DiagramCanvas<"label">(4, 1)
+
+    canvas.setText(0, 0, "e\u0301x", "label")
+
+    expect(canvas.toString()).toBe("e\u0301x")
+    expect(stringWidth(canvas.toString())).toBe(2)
   })
 
   test("merges cells through the adapter-provided merge function", () => {
@@ -69,5 +80,13 @@ describe("DiagramCanvas", () => {
       { trimBottom: true },
     )
     expect(runs).toEqual(["top"])
+  })
+
+  test("can trim unused leading whitespace reserved by layout", () => {
+    const canvas = new DiagramCanvas<"label">(3, 3)
+    canvas.setText(0, 2, "end", "label")
+
+    expect(canvas.toString({ trimTop: true })).toBe("end")
+    expect(canvas.getTextSize({ trimTop: true })).toEqual({ width: 3, height: 1 })
   })
 })

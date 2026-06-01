@@ -104,7 +104,8 @@ function horizontalEdgePath(
   to: FlowchartNodeBounds,
   direction: FlowchartDirection,
 ): FlowchartPoint[] {
-  if (centerCoordinate(from, "x") === centerCoordinate(to, "x")) return verticalForwardEdgePath(from, to)
+  const overlapsHorizontally = from.left < to.left + to.width && to.left < from.left + from.width
+  if (overlapsHorizontally) return verticalForwardEdgePath(from, to)
 
   const travel = horizontalTravel(from, to, direction)
   const startSide = sideForDirection(travel)

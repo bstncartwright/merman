@@ -1,9 +1,5 @@
-import {
-  renderSequenceDiagram,
-  renderSequenceDiagramAnsi,
-  type SequenceDiagramAnsiOptions,
-  type SequenceDiagramRenderOptions,
-} from "./diagram.js"
+import { renderSequenceDiagram, renderSequenceDiagramAnsi } from "./diagram.js"
+import type { SequenceDiagramAnsiOptions, SequenceDiagramRenderOptions } from "./types.js"
 
 export type {
   SequenceParticipant as Participant,
@@ -19,13 +15,10 @@ export type {
   SequenceDiagramAnsiTheme as Theme,
   SequenceDiagramAnsiOptions as AnsiRenderOptions,
   SequenceDiagramOptions as RenderableOptions,
-} from "./diagram.js"
+} from "./types.js"
 
-export {
-  isMermaidSequenceDiagram as is,
-  parseMermaidSequenceDiagram as parse,
-  SequenceDiagramRenderable as Renderable,
-} from "./diagram.js"
+export { isMermaidSequenceDiagram as is, parseMermaidSequenceDiagram as parse } from "./diagram.js"
+export { SequenceDiagramRenderable as Renderable } from "./renderable.js"
 
 export interface RenderOptions extends SequenceDiagramAnsiOptions {
   /** Emit ANSI color escapes. Default: `true`. Pass `false` for plain text. */
