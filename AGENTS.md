@@ -43,7 +43,10 @@ src/
 ├── state/               # State diagrams (parser, layout, render-grid, renderable)
 ├── sequence/            # Sequence diagrams
 │   ├── parser.ts        #   Mermaid string -> SequenceDiagram
-│   ├── diagram.ts       #   Layout/drawing plus plain/ANSI rendering
+│   ├── drawing.ts       #   SequenceDiagram -> styled diagram grid
+│   ├── style.ts         #   Themes, colors, pulse style ramps
+│   ├── render-grid.ts   #   Grid -> string / ANSI / StyledText
+│   ├── diagram.ts       #   Plain/ANSI rendering facade
 │   ├── renderable.ts    #   SequenceDiagramRenderable (OpenTUI)
 │   ├── options.ts       #   Defaults and option normalization
 │   ├── types.ts         #   Public data model and options
@@ -133,9 +136,9 @@ See the workflow file for the exact gating sequence.
 ## Where to look first
 
 - Want to understand parsing? Start at `src/<family>/parser.ts`.
-- Want to understand the visual output? Start at the family's
-  `render.ts` / `diagram.ts`, then trace into `core/canvas.ts` and
-  `core/render-grid.ts`.
-- Want to understand the live renderable? `src/<family>/renderable.ts` (or
-  `diagram.ts` for sequence) — these wrap the string pipeline and add
-  OpenTUI-specific lifecycle, theming, and animation hooks.
+- Want to understand the visual output? Start at the family's drawing/layout
+  Module (`flowchart/drawing.ts`, `state/diagram.ts`, or `sequence/drawing.ts`),
+  then trace into `core/canvas.ts` and the relevant render-grid Module.
+- Want to understand the live renderable? Start at
+  `src/<family>/renderable.ts`; these are OpenTUI Adapters over the family grid
+  pipeline and own lifecycle, color controls, and animation invalidation.

@@ -1,7 +1,7 @@
 import { TextBufferRenderable, type BorderStyle, type ColorInput, type RenderContext, type RGBA } from "@opentui/core"
 import { parseDiagramRenderableColor, setDiagramRenderableColor } from "../core/adapter/renderable-color.js"
 import { brightenColor } from "../core/color/style.js"
-import { layoutSequenceDiagram, renderGridStyledText, resolveSequenceStyleColors } from "./diagram.js"
+import { layoutSequenceDiagram } from "./drawing.js"
 import {
   DEFAULT_FRAGMENT_BORDER_STYLE,
   DEFAULT_MIN_PARTICIPANT_GAP,
@@ -9,6 +9,9 @@ import {
   normalizeSequencePulseGap,
   normalizeSequencePulseLength,
 } from "./options.js"
+import { parseMermaidSequenceDiagram } from "./parser.js"
+import { renderSequenceGridStyledText } from "./render-grid.js"
+import { resolveSequenceStyleColors } from "./style.js"
 import type { SequenceDiagramOptions } from "./types.js"
 
 export class SequenceDiagramRenderable extends TextBufferRenderable {
@@ -199,7 +202,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   }
 
   private updateDiagram(): void {
-    const grid = layoutSequenceDiagram(this._content, {
+    const grid = layoutSequenceDiagram(parseMermaidSequenceDiagram(this._content), {
       minParticipantGap: this._minParticipantGap,
       fragmentBorderStyle: this._fragmentBorderStyle,
       pulseFrame: this._pulseFrame,
@@ -207,7 +210,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
       pulseGap: this._pulseGap,
     })
     this.textBuffer.setStyledText(
-      renderGridStyledText(
+      renderSequenceGridStyledText(
         grid,
         resolveSequenceStyleColors({
           participant: this._participantColor,
