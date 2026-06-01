@@ -313,8 +313,7 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
   private parsedDiagram(): FlowchartDiagram {
     if (!this._navigationDiagram) {
       const diagram = parseMermaidFlowchartDiagram(this._content)
-      diagram.direction = this._direction ?? diagram.direction
-      this._navigationDiagram = diagram
+      this._navigationDiagram = this._direction ? { ...diagram, direction: this._direction } : diagram
     }
     return this._navigationDiagram
   }
@@ -383,7 +382,7 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
   }
 
   private updateDiagram(): void {
-    const grid = renderFlowchartGrid(this._content, this.renderOptions())
+    const grid = renderFlowchartGrid(this.parsedDiagram(), this.renderOptions())
     this._grid = grid
     this.updateRenderedSize(grid)
     this.updateStyledText()
@@ -398,7 +397,7 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
   private updateStyledText(): void {
     let grid = this._grid
     if (!grid) {
-      grid = renderFlowchartGrid(this._content, this.renderOptions())
+      grid = renderFlowchartGrid(this.parsedDiagram(), this.renderOptions())
       this._grid = grid
       this.updateRenderedSize(grid)
     }

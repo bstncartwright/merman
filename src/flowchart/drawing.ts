@@ -518,14 +518,19 @@ function drawSourceConnectors(
   }
 }
 
-export function renderFlowchartGrid(content: string, options: FlowchartDiagramRenderOptions = {}): FlowchartGrid {
+export function renderFlowchartGrid(
+  diagram: FlowchartDiagram,
+  options: FlowchartDiagramRenderOptions = {},
+): FlowchartGrid {
   const borderStyle = options.borderStyle ?? DEFAULT_BORDER_STYLE
   const pulseFrame = normalizeFlowchartPulseFrame(options.pulseFrame)
   const pulseProgress = normalizeFlowchartPulseProgress(options.pulseProgress)
   const activeEdgeProgress = normalizeFlowchartPulseProgress(options.activeEdgeProgress)
   const pulseLength = normalizeFlowchartPulseLength(options.pulseLength)
   const pulseGap = normalizeFlowchartPulseGap(options.pulseGap)
-  const { diagram, bounds, routes, subgraphBounds, width, height } = layoutFlowchartDiagram(content, options)
+  const layout = layoutFlowchartDiagram(diagram, options)
+  const { bounds, routes, subgraphBounds, width, height } = layout
+  diagram = layout.diagram
   const grid = new DiagramCanvas<FlowchartCellStyle, FlowchartCellMetadata>(width, height, {
     mergeCell: mergeFlowchartCell,
   })

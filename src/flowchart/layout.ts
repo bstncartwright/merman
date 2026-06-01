@@ -13,7 +13,6 @@ import {
   flowchartVerticalBranchLabelGap,
 } from "./labels.js"
 import type { FlowchartDiagramRenderOptions } from "./options.js"
-import { parseMermaidFlowchartDiagram } from "./parser.js"
 import { routeFlowchartEdges } from "./routing.js"
 import type {
   FlowchartDiagram,
@@ -515,9 +514,11 @@ function layoutSubgraphs(
   return subgraphBounds
 }
 
-export function layoutFlowchartDiagram(content: string, options: FlowchartDiagramRenderOptions = {}): FlowchartLayout {
-  const diagram = parseMermaidFlowchartDiagram(content)
-  diagram.direction = options.direction ?? diagram.direction
+export function layoutFlowchartDiagram(
+  sourceDiagram: FlowchartDiagram,
+  options: FlowchartDiagramRenderOptions = {},
+): FlowchartLayout {
+  const diagram = options.direction ? { ...sourceDiagram, direction: options.direction } : sourceDiagram
   const direction = diagram.direction
   const horizontal = isHorizontalDirection(direction)
   const minNodeGap = normalizePositiveInt(options.minNodeGap, DEFAULT_MIN_NODE_GAP)

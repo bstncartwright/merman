@@ -4,12 +4,24 @@ import { createTestRenderer } from "@opentui/core/testing"
 import stringWidth from "string-width"
 import { blendColor, colorsEqual, DIAGRAM_FADE_STEPS } from "../core/color/style.js"
 import { expectDiagram } from "../test/diagram.js"
-import { renderFlowchartGrid } from "./drawing.js"
+import { renderFlowchartGrid as renderParsedFlowchartGrid } from "./drawing.js"
 import { flowchartNodeColorKey, renderGridStyledText, resolveFlowchartStyleColors } from "./style.js"
-import { DEFAULT_MIN_RANK_GAP, DEFAULT_MIN_VERTICAL_RANK_GAP, layoutFlowchartDiagram } from "./layout.js"
+import {
+  DEFAULT_MIN_RANK_GAP,
+  DEFAULT_MIN_VERTICAL_RANK_GAP,
+  layoutFlowchartDiagram as layoutParsedFlowchartDiagram,
+} from "./layout.js"
 import { parseMermaidFlowchartDiagram } from "./parser.js"
 import { renderFlowchartDiagram, renderFlowchartDiagramAnsi } from "./render.js"
 import { FlowchartDiagramRenderable } from "./renderable.js"
+
+function renderFlowchartGrid(content: string, options?: Parameters<typeof renderParsedFlowchartGrid>[1]) {
+  return renderParsedFlowchartGrid(parseMermaidFlowchartDiagram(content), options)
+}
+
+function layoutFlowchartDiagram(content: string, options?: Parameters<typeof layoutParsedFlowchartDiagram>[1]) {
+  return layoutParsedFlowchartDiagram(parseMermaidFlowchartDiagram(content), options)
+}
 
 function flowchartTextSize(content: string): { width: number; height: number } {
   return renderFlowchartGrid(content).getTextSize({ trimTop: true, trimBottom: true })
@@ -57,6 +69,15 @@ describe("FlowchartDiagram", () => {
 
     expect(new Set(widths).size).toBe(1)
     expect(output).toContain("界")
+  })
+
+  test("does not mutate a parsed diagram when laying out with a direction override", () => {
+    const diagram = parseMermaidFlowchartDiagram(`flowchart LR
+  A --> B`)
+
+    layoutParsedFlowchartDiagram(diagram, { direction: "RL" })
+
+    expect(diagram.direction).toBe("LR")
   })
 
   test("does not draw reverse-flow arrowheads on a target's opposite side", () => {

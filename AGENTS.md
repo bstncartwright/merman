@@ -30,11 +30,11 @@ src/
 ├── index.ts             # Single public entrypoint (re-exports flowchart/state/sequence)
 ├── flowchart/           # Flowchart pipeline
 │   ├── parser.ts        #   Mermaid string -> FlowchartDiagram
-│   ├── layout.ts        #   Rank-based node placement
+│   ├── layout.ts        #   FlowchartDiagram -> placed bounds/routes
 │   ├── routing.ts       #   Edge routing on the diagram grid
 │   ├── labels.ts        #   Edge label placement
-│   ├── render.ts        #   FlowchartDiagram -> string / ANSI
-│   ├── drawing.ts       #   Glyph + box helpers
+│   ├── render.ts        #   Plain/ANSI rendering facade
+│   ├── drawing.ts       #   FlowchartDiagram -> styled diagram grid
 │   ├── style.ts         #   Themes, color keys
 │   ├── options.ts       #   Public option types
 │   ├── renderable.ts    #   FlowchartDiagramRenderable (OpenTUI)
