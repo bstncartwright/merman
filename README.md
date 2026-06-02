@@ -79,7 +79,8 @@ merman --file diagram.mmd --no-color > rendered.txt
 ```
 
 The CLI is shipped as a Bun executable, so Bun must be available on your
-`$PATH`.
+`$PATH`. Wide horizontal flowcharts are automatically folded vertically when
+they exceed the terminal width, or 120 columns when output is redirected.
 
 ## Examples
 
@@ -170,6 +171,14 @@ render(content, { color: false })
 
 // Override the palette.
 render(content, { theme: { node: "#86E1C8", edge: "#5D766B" } })
+```
+
+Flowchart-specific rendering can apply the same width-aware folding policy:
+
+```ts
+import { Flowchart } from "@kitlangton/merman"
+
+Flowchart.render(content, { color: false, layoutMaxWidth: 100 })
 ```
 
 Two more top-level helpers:

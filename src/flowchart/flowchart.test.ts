@@ -168,6 +168,108 @@ describe("FlowchartDiagram", () => {
     expect(output.match(/[▶▼]/g)).toHaveLength(3)
   })
 
+  test("folds oversized horizontal activity pipelines into a readable vertical layout", () => {
+    const output = renderFlowchartDiagram(
+      `flowchart LR
+  C[ReceiveInput] --> P[Persist ActivityRequested]
+  P --> S[Self RunPendingActivity]
+  S --> O[OpenCode async task]
+  O --> M[Self OutputObserved]
+  M --> E[Persist OutputObserved]`,
+      { layoutMaxWidth: 120 },
+    )
+
+    expectDiagram(output).toEqualDiagram(`
+            ╭──────────────╮
+            │ ReceiveInput │
+            ╰───────┬──────╯
+                    │
+                    │
+                    │
+                    ▼
+      ╭───────────────────────────╮
+      │ Persist ActivityRequested │
+      ╰─────────────┬─────────────╯
+                    │
+                    │
+                    │
+                    ▼
+       ╭─────────────────────────╮
+       │ Self RunPendingActivity │
+       ╰────────────┬────────────╯
+                    │
+                    │
+                    │
+                    ▼
+         ╭─────────────────────╮
+         │ OpenCode async task │
+         ╰──────────┬──────────╯
+                    │
+                    │
+                    │
+                    ▼
+         ╭─────────────────────╮
+         │ Self OutputObserved │
+         ╰──────────┬──────────╯
+                    │
+                    │
+                    │
+                    ▼
+       ╭────────────────────────╮
+       │ Persist OutputObserved │
+       ╰────────────────────────╯
+    `)
+  })
+
+  test("folds oversized horizontal feedback pipelines without losing labeled routes", () => {
+    const output = renderFlowchartDiagram(
+      `flowchart LR
+  C[Commands] --> A[AgentThread activation]
+  A -->|persist facts| J[(AgentThread journal)]
+  A -->|resume / steer / abort| O[OpenCode session]
+  O -->|observed output| A
+  J -->|visible output requested| R[Reactor]
+  R --> D[Discord]`,
+      { layoutMaxWidth: 120 },
+    )
+
+    expectDiagram(output).toEqualDiagram(`
+                                      ╭──────────╮
+                                      │ Commands │
+                                      ╰─────┬────╯
+                                            │
+                                            │
+                                            │
+                                            ▼
+                               ╭────────────────────────╮
+                               │ AgentThread activation │◀───── observed output ─────╮
+                               ╰────────────┬───────────╯                            │
+                                            │                                        │
+                 ╭───── persist facts ──────┴── resume / steer / abort ──╮           │
+                 │                                                       │           │
+                 ▼                                                       │           │
+      ╭─────────────────────╮                                            ▼           │
+      ├─────────────────────┤                                  ╭──────────────────╮  │
+      │ AgentThread journal │                                  │ OpenCode session ├──╯
+      ├─────────────────────┤                                  ╰──────────────────╯
+      ╰──────────┬──────────╯
+                 │
+                 ╰ visible output requested ╮
+                                            │
+                                            ▼
+                                       ╭─────────╮
+                                       │ Reactor │
+                                       ╰────┬────╯
+                                            │
+                                            │
+                                            │
+                                            ▼
+                                       ╭─────────╮
+                                       │ Discord │
+                                       ╰─────────╯
+    `)
+  })
+
   test("parses Mermaid flowchart nodes and standard arrows", () => {
     const diagram = parseMermaidFlowchartDiagram(`
 flowchart TD

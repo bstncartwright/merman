@@ -581,12 +581,12 @@ function layoutSubgraphs(
   return subgraphBounds
 }
 
-export function layoutFlowchartDiagram(
+function layoutFlowchartWithDirection(
   sourceDiagram: FlowchartDiagram,
-  options: FlowchartDiagramRenderOptions = {},
+  options: FlowchartDiagramRenderOptions,
+  direction: FlowchartDirection,
 ): FlowchartLayout {
-  const diagram = options.direction ? { ...sourceDiagram, direction: options.direction } : sourceDiagram
-  const direction = diagram.direction
+  const diagram = direction === sourceDiagram.direction ? sourceDiagram : { ...sourceDiagram, direction }
   const horizontal = isHorizontalDirection(direction)
   const minNodeGap = normalizePositiveInt(options.minNodeGap, DEFAULT_MIN_NODE_GAP)
   const requestedMinRankGap = normalizePositiveInt(
@@ -615,4 +615,17 @@ export function layoutFlowchartDiagram(
   const maxX = Math.max(0, ...allBounds.map((bound) => bound.left + bound.width))
   const maxY = Math.max(0, ...allBounds.map((bound) => bound.top + bound.height))
   return { diagram, bounds, routes, subgraphBounds, width: maxX + 4, height: maxY + 4 }
+}
+
+export function layoutFlowchartDiagram(
+  sourceDiagram: FlowchartDiagram,
+  options: FlowchartDiagramRenderOptions = {},
+): FlowchartLayout {
+  const direction = options.direction ?? sourceDiagram.direction
+  const layout = layoutFlowchartWithDirection(sourceDiagram, options, direction)
+  const maxWidth = options.layoutMaxWidth
+  if (!isHorizontalDirection(direction) || maxWidth === undefined || !Number.isFinite(maxWidth)) return layout
+  if (layout.width <= Math.max(1, Math.trunc(maxWidth))) return layout
+
+  return layoutFlowchartWithDirection(sourceDiagram, options, direction === "RL" ? "BT" : "TD")
 }

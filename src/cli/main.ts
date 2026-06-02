@@ -21,6 +21,8 @@ interface CliOptions {
   readonly version: boolean
 }
 
+const DEFAULT_TERMINAL_WIDTH = 120
+
 const usage = `merman v${packageJson.version}
 
 Render Mermaid diagrams in the terminal.
@@ -152,8 +154,13 @@ function detect(source: string): DiagramKind | undefined {
 
 function renderKind(source: string, kind: DiagramKind, color: boolean): string {
   switch (kind) {
-    case "flowchart":
-      return color ? renderFlowchartDiagramAnsi(source) : renderFlowchartDiagram(source)
+    case "flowchart": {
+      const maxWidth =
+        process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : DEFAULT_TERMINAL_WIDTH
+      return color
+        ? renderFlowchartDiagramAnsi(source, { layoutMaxWidth: maxWidth })
+        : renderFlowchartDiagram(source, { layoutMaxWidth: maxWidth })
+    }
     case "sequence":
       return color ? renderSequenceDiagramAnsi(source) : renderSequenceDiagram(source)
     case "state":

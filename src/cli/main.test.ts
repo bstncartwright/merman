@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import stringWidth from "string-width"
 
 async function runCli(args: string[], stdin?: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const process = Bun.spawn(["bun", "src/cli/main.ts", ...args], {
@@ -24,6 +25,25 @@ describe("merman CLI", () => {
     expect(result.stdout).toContain("Start")
     expect(result.stdout).toContain("Done")
     expect(result.stdout).not.toContain("\u001b[")
+  })
+
+  test("folds horizontal flowcharts that exceed the redirected output width", async () => {
+    const result = await runCli(
+      ["--no-color"],
+      `flowchart LR
+  C[ReceiveInput] --> P[Persist ActivityRequested]
+  P --> S[Self RunPendingActivity]
+  S --> O[OpenCode async task]
+  O --> M[Self OutputObserved]
+  M --> E[Persist OutputObserved]`,
+    )
+    const lines = result.stdout.trimEnd().split("\n")
+
+    expect(result.exitCode).toBe(0)
+    expect(Math.max(...lines.map((line) => stringWidth(line)))).toBeLessThanOrEqual(120)
+    expect(lines.findIndex((line) => line.includes("ReceiveInput"))).toBeLessThan(
+      lines.findIndex((line) => line.includes("Persist ActivityRequested")),
+    )
   })
 
   test("honors explicit kind for positional state input", async () => {
