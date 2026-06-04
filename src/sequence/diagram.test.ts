@@ -54,6 +54,68 @@ sequenceDiagram
     `)
   })
 
+  test("renders a compact terminal sequence diagram without participant boxes", () => {
+    const output = renderSequenceDiagram(
+      `
+sequenceDiagram
+  participant Leaf as leaf tool
+  participant Location as LocationMutation
+  participant File as FileMutation
+  Leaf->>Location: resolve(path)
+  Location-->>Leaf: Plan(target, authority anchor)
+  Leaf->>File: commit(plan)
+  File->>Location: revalidate(plan)
+  Location-->>File: same target or reject
+`,
+      { compact: true },
+    )
+
+    expectDiagram(output).toEqualDiagram(`
+      leaf tool                       LocationMutation             FileMutation
+          │                                   │                          │
+          ├─ resolve(path) ───────────────────▶                          │
+          │                                   │                          │
+          ◀─ Plan(target, authority anchor) ──┤                          │
+          │                                   │                          │
+          ├─ commit(plan) ───────────────────────────────────────────────▶
+          │                                   │                          │
+          │                                   ◀─ revalidate(plan) ───────┤
+          │                                   │                          │
+          │                                   ├─ same target or reject ──▶
+          │                                   │                          │
+    `)
+  })
+
+  test("keeps structured sequence steps visible in compact mode", () => {
+    const output = renderSequenceDiagram(
+      `
+sequenceDiagram
+  participant Worker
+  participant Store
+  Note over Worker,Store: transaction
+  alt accepted
+    Worker->>Worker: prepare
+    Worker->>Store: commit
+  end
+`,
+      { compact: true },
+    )
+
+    expectDiagram(output).toContainInOrder("Worker", "Store", "transaction", "alt: accepted", "prepare", "commit")
+  })
+
+  test("keeps compact labels above arrows when they do not fit inline", () => {
+    const output = renderSequenceDiagram(
+      "sequenceDiagram\n  participant A\n  participant B\n  participant C\n  A->>C: this label is deliberately much too long to fit between endpoints despite intermediate spacing",
+      { compact: true },
+    )
+    const lines = output.split("\n")
+
+    expect(lines.findIndex((line) => line.includes("deliberately"))).toBeLessThan(
+      lines.findIndex((line) => line.includes("▶")),
+    )
+  })
+
   test("normalizes invalid participant gaps for text and live rendering", async () => {
     const content = "sequenceDiagram\n  A->>B: hello"
 

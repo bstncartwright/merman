@@ -336,19 +336,23 @@ export function layoutSequenceDiagram(
     const { participant, centerX: center, headerLeftX, headerRightX, labelX } = placement
     const { participantHeaderTopY, participantHeaderY, participantRuleY, lifelineStartY, lifelineEndY } = plan.rows
 
-    for (let x = headerLeftX; x <= headerRightX; x++) {
-      setCell(grid, x, participantHeaderTopY, SEQUENCE_BORDER.horizontal, "lifeline")
-      setCell(grid, x, participantRuleY, SEQUENCE_BORDER.horizontal, "lifeline")
-    }
+    if (options.compact) {
+      setText(grid, labelX, participantHeaderY, participant.label, "participant")
+    } else {
+      for (let x = headerLeftX; x <= headerRightX; x++) {
+        setCell(grid, x, participantHeaderTopY, SEQUENCE_BORDER.horizontal, "lifeline")
+        setCell(grid, x, participantRuleY, SEQUENCE_BORDER.horizontal, "lifeline")
+      }
 
-    setCell(grid, headerLeftX, participantHeaderTopY, SEQUENCE_BORDER.topLeft, "lifeline")
-    setCell(grid, headerRightX, participantHeaderTopY, SEQUENCE_BORDER.topRight, "lifeline")
-    setCell(grid, headerLeftX, participantHeaderY, SEQUENCE_BORDER.vertical, "lifeline")
-    setCell(grid, headerRightX, participantHeaderY, SEQUENCE_BORDER.vertical, "lifeline")
-    setCell(grid, headerLeftX, participantRuleY, SEQUENCE_BORDER.bottomLeft, "lifeline")
-    setCell(grid, headerRightX, participantRuleY, SEQUENCE_BORDER.bottomRight, "lifeline")
-    setText(grid, labelX, participantHeaderY, participant.label, "participant")
-    setCell(grid, center, participantRuleY, SEQUENCE_BORDER.topT, "lifeline")
+      setCell(grid, headerLeftX, participantHeaderTopY, SEQUENCE_BORDER.topLeft, "lifeline")
+      setCell(grid, headerRightX, participantHeaderTopY, SEQUENCE_BORDER.topRight, "lifeline")
+      setCell(grid, headerLeftX, participantHeaderY, SEQUENCE_BORDER.vertical, "lifeline")
+      setCell(grid, headerRightX, participantHeaderY, SEQUENCE_BORDER.vertical, "lifeline")
+      setCell(grid, headerLeftX, participantRuleY, SEQUENCE_BORDER.bottomLeft, "lifeline")
+      setCell(grid, headerRightX, participantRuleY, SEQUENCE_BORDER.bottomRight, "lifeline")
+      setText(grid, labelX, participantHeaderY, participant.label, "participant")
+      setCell(grid, center, participantRuleY, SEQUENCE_BORDER.topT, "lifeline")
+    }
 
     for (let y = lifelineStartY; y <= lifelineEndY; y++) {
       setCell(grid, center, y, SEQUENCE_BORDER.vertical, "lifeline")
@@ -383,8 +387,10 @@ export function layoutSequenceDiagram(
       continue
     }
 
-    for (let lineIndex = 0; lineIndex < placement.labelLines.length; lineIndex++) {
-      setText(grid, placement.labelX, placement.labelY + lineIndex, placement.labelLines[lineIndex]!, messageStyle)
+    if (!placement.inlineLabel) {
+      for (let lineIndex = 0; lineIndex < placement.labelLines.length; lineIndex++) {
+        setText(grid, placement.labelX, placement.labelY + lineIndex, placement.labelLines[lineIndex]!, messageStyle)
+      }
     }
 
     for (let x = placement.leftX + 1; x < placement.rightX; x++) {
@@ -408,6 +414,7 @@ export function layoutSequenceDiagram(
         pulseGap,
       )
     }
+    if (placement.inlineLabel) setText(grid, placement.labelX, placement.labelY, placement.inlineLabel, messageStyle)
   }
 
   return grid

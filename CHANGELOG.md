@@ -1,5 +1,12 @@
 # @kitlangton/merman
 
+## 0.2.1
+
+### Patch Changes
+
+- 307e747: Fold overly wide horizontal flowcharts into a vertical layout when rendering through the CLI or when using the new `layoutMaxWidth` flowchart option.
+- Add a plain-text `--doc-comment=ts` CLI output mode for rendering diagrams as paste-safe TypeScript doc-comment blocks, `--replace <typescript-file>` for replacing every inline Mermaid doc-comment fence in a file in place, and `--compact` for shorter flowchart routes and sequence diagrams with bare participant labels and inline message labels.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -2,23 +2,31 @@
 import { readFile } from "node:fs/promises"
 import { Console, Effect } from "effect"
 import packageJson from "../../package.json" with { type: "json" }
-import { firstMeaningfulMermaidLine } from "../core/mermaid.js"
-import { isMermaidFlowchartDiagram } from "../flowchart/parser.js"
 import { renderFlowchartDiagram, renderFlowchartDiagramAnsi } from "../flowchart/render.js"
+import { detect, UnknownDiagramError, type DiagramKind } from "../index.js"
 import { renderSequenceDiagram, renderSequenceDiagramAnsi } from "../sequence/diagram.js"
-import { isMermaidSequenceDiagram } from "../sequence/parser.js"
 import { renderStateDiagram, renderStateDiagramAnsi } from "../state/diagram.js"
-import { isMermaidStateDiagram } from "../state/parser.js"
+import { formatTypeScriptDocComment } from "./doc-comment.js"
+import { replaceTypeScriptMermaidFences } from "./replace.js"
 
-type DiagramKind = "flowchart" | "sequence" | "state"
+type DocComment = "ts"
 
 interface CliOptions {
   readonly content?: string
   readonly file?: string
   readonly kind?: DiagramKind
+  readonly docComment?: DocComment
+  readonly replace?: string
   readonly color: boolean
+  readonly compact: boolean
   readonly help: boolean
   readonly version: boolean
+}
+
+interface RenderKindOptions {
+  readonly color: boolean
+  readonly compact: boolean
+  readonly flowchartMaxWidth?: number
 }
 
 const DEFAULT_TERMINAL_WIDTH = 120
@@ -31,11 +39,15 @@ Usage:
   merman [content]
   merman --file <path>
   merman --kind <flowchart|sequence|state> --file <path>
+  merman --replace <typescript-file>
 
 Options:
   -f, --file <path>   Read the diagram from a file
       --kind <kind>   Override detection: flowchart, sequence, or state
       --no-color      Emit plain text instead of ANSI color escapes
+      --compact       Use compact diagram rendering where available
+      --doc-comment=ts  Wrap output in a TypeScript doc-comment block
+      --replace <path>  Replace inline Mermaid doc-comment fences in a file
   -h, --help          Show help
   -v, --version       Show version
 
@@ -54,6 +66,23 @@ const program = Effect.fnUntraced(function* (argv: ReadonlyArray<string>) {
     return
   }
 
+  if (options.replace !== undefined) {
+    if (
+      options.content !== undefined ||
+      options.file !== undefined ||
+      options.kind !== undefined ||
+      options.docComment !== undefined ||
+      !options.color
+    ) {
+      return yield* Effect.fail(new UsageError("--replace can only be combined with --compact."))
+    }
+    const count = yield* Effect.promise(() =>
+      replaceTypeScriptMermaidFences(options.replace!, (source) => renderReplacementSource(source, options.compact)),
+    )
+    yield* Console.log(`Replaced ${count} Mermaid ${count === 1 ? "block" : "blocks"} in ${options.replace}.`)
+    return
+  }
+
   const source = options.content ?? (options.file ? yield* readFileString(options.file) : yield* readStdin)
   if (source.trim() === "") {
     return yield* Effect.fail(
@@ -64,14 +93,21 @@ const program = Effect.fnUntraced(function* (argv: ReadonlyArray<string>) {
   const kind = options.kind ?? detect(source)
   if (!kind) return yield* Effect.fail(new UnknownDiagramError(source))
 
-  yield* Console.log(renderKind(source, kind, options.color))
+  const rendered = renderKind(source, kind, {
+    color: options.docComment === undefined && options.color,
+    compact: options.compact,
+  })
+  yield* Console.log(options.docComment === "ts" ? formatTypeScriptDocComment(rendered) : rendered)
 })
 
 const parseArgs = Effect.fnUntraced(function* (argv: ReadonlyArray<string>) {
   let content: string | undefined
   let file: string | undefined
   let kind: DiagramKind | undefined
+  let docComment: DocComment | undefined
+  let replace: string | undefined
   let color = true
+  let compact = false
   let help = false
   let version = false
 
@@ -89,6 +125,9 @@ const parseArgs = Effect.fnUntraced(function* (argv: ReadonlyArray<string>) {
       case "--no-color":
         color = false
         break
+      case "--compact":
+        compact = true
+        break
       case "--file":
       case "-f":
         file = yield* readValue(argv, index, arg)
@@ -98,11 +137,23 @@ const parseArgs = Effect.fnUntraced(function* (argv: ReadonlyArray<string>) {
         kind = yield* parseKind(yield* readValue(argv, index, arg))
         index += 1
         break
+      case "--doc-comment":
+        docComment = yield* parseDocComment(yield* readValue(argv, index, arg))
+        index += 1
+        break
+      case "--replace":
+        replace = yield* readValue(argv, index, arg)
+        index += 1
+        break
       default:
         if (arg.startsWith("--file=")) {
           file = arg.slice("--file=".length)
         } else if (arg.startsWith("--kind=")) {
           kind = yield* parseKind(arg.slice("--kind=".length))
+        } else if (arg.startsWith("--doc-comment=")) {
+          docComment = yield* parseDocComment(arg.slice("--doc-comment=".length))
+        } else if (arg.startsWith("--replace=")) {
+          replace = arg.slice("--replace=".length)
         } else if (arg.startsWith("-")) {
           return yield* Effect.fail(new UsageError(`Unknown option: ${arg}`))
         } else {
@@ -111,7 +162,7 @@ const parseArgs = Effect.fnUntraced(function* (argv: ReadonlyArray<string>) {
     }
   }
 
-  return { content, file, kind, color, help, version } satisfies CliOptions
+  return { content, file, kind, docComment, replace, color, compact, help, version } satisfies CliOptions
 })
 
 function readValue(argv: ReadonlyArray<string>, index: number, flag: string): Effect.Effect<string, UsageError> {
@@ -125,6 +176,12 @@ function parseKind(value: string): Effect.Effect<DiagramKind, UsageError> {
   return value === "flowchart" || value === "sequence" || value === "state"
     ? Effect.succeed(value)
     : Effect.fail(new UsageError(`Invalid --kind: ${value}. Expected flowchart, sequence, or state.`))
+}
+
+function parseDocComment(value: string): Effect.Effect<DocComment, UsageError> {
+  return value === "ts"
+    ? Effect.succeed(value)
+    : Effect.fail(new UsageError(`Invalid --doc-comment: ${value}. Expected ts.`))
 }
 
 const readStdin: Effect.Effect<string> = Effect.promise(
@@ -145,26 +202,28 @@ function readFileString(path: string): Effect.Effect<string> {
   return Effect.promise(() => readFile(path, "utf8"))
 }
 
-function detect(source: string): DiagramKind | undefined {
-  if (isMermaidFlowchartDiagram(source)) return "flowchart"
-  if (isMermaidSequenceDiagram(source)) return "sequence"
-  if (isMermaidStateDiagram(source)) return "state"
-  return undefined
+function renderReplacementSource(source: string, compact: boolean): string {
+  const kind = detect(source)
+  if (!kind) throw new UnknownDiagramError(source)
+  return renderKind(source, kind, { color: false, compact, flowchartMaxWidth: DEFAULT_TERMINAL_WIDTH })
 }
 
-function renderKind(source: string, kind: DiagramKind, color: boolean): string {
+function renderKind(source: string, kind: DiagramKind, options: RenderKindOptions): string {
   switch (kind) {
     case "flowchart": {
       const maxWidth =
-        process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : DEFAULT_TERMINAL_WIDTH
-      return color
-        ? renderFlowchartDiagramAnsi(source, { layoutMaxWidth: maxWidth })
-        : renderFlowchartDiagram(source, { layoutMaxWidth: maxWidth })
+        options.flowchartMaxWidth ??
+        (process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : DEFAULT_TERMINAL_WIDTH)
+      return options.color
+        ? renderFlowchartDiagramAnsi(source, { compact: options.compact, layoutMaxWidth: maxWidth })
+        : renderFlowchartDiagram(source, { compact: options.compact, layoutMaxWidth: maxWidth })
     }
     case "sequence":
-      return color ? renderSequenceDiagramAnsi(source) : renderSequenceDiagram(source)
+      return options.color
+        ? renderSequenceDiagramAnsi(source, { compact: options.compact })
+        : renderSequenceDiagram(source, { compact: options.compact })
     case "state":
-      return color ? renderStateDiagramAnsi(source) : renderStateDiagram(source)
+      return options.color ? renderStateDiagramAnsi(source) : renderStateDiagram(source)
   }
 }
 
@@ -173,18 +232,6 @@ class UsageError extends Error {
   constructor(message: string) {
     super(message)
     this.name = "UsageError"
-  }
-}
-
-class UnknownDiagramError extends Error {
-  readonly _tag = "UnknownDiagramError"
-  constructor(content: string) {
-    const head = firstMeaningfulMermaidLine(content) ?? "(empty)"
-    super(
-      `Could not detect diagram kind. Expected the first non-empty line to start with ` +
-        `"flowchart", "graph", "sequenceDiagram", or "stateDiagram[-v2]". Got: "${head}"`,
-    )
-    this.name = "UnknownDiagramError"
   }
 }
 

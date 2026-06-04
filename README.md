@@ -76,7 +76,43 @@ merman --file diagram.mmd
 
 # Plain text (no ANSI escapes) for piping into docs
 merman --file diagram.mmd --no-color > rendered.txt
+
+# Paste-safe TypeScript doc-comment block
+merman --file diagram.mmd --no-color --doc-comment=ts
+
+# More compact diagrams for source comments
+merman --file diagram.mmd --no-color --compact --doc-comment=ts
 ```
+
+`--doc-comment=ts` preserves the rendered diagram spacing after a `*`
+prefix, wraps the result in `/**` and `*/`, and always emits plain text so the
+output is safe to paste directly above a TypeScript symbol.
+
+To replace inline Mermaid syntax in place, add one or more standard Mermaid
+fences inside TypeScript doc-comments:
+
+````ts
+/**
+ * ```mermaid
+ * sequenceDiagram
+ *   Worker->>Store: commit(plan)
+ * ```
+ */
+export function commit() {}
+````
+
+Then replace every inline Mermaid fence in the file at once:
+
+```sh
+merman --compact --replace src/commit.ts
+```
+
+`--replace` consumes the Mermaid fences and writes aligned diagram lines into
+their existing doc-comments. It always uses deterministic plain-text rendering,
+so generated source files never contain ANSI escapes. `--compact` is optional.
+For flowcharts it shortens routes while retaining node shapes. For sequence
+diagrams it removes participant boxes and places single-line message labels
+inside arrows while retaining a spacer row between messages.
 
 The CLI is shipped as a Bun executable, so Bun must be available on your
 `$PATH`. Wide horizontal flowcharts are automatically folded vertically when

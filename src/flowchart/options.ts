@@ -25,6 +25,7 @@ export function normalizeFlowchartPulseGap(value: number | undefined): number {
 }
 
 export interface FlowchartDiagramRenderOptions {
+  compact?: boolean
   direction?: FlowchartDirection
   borderStyle?: BorderStyle
   minNodeGap?: number

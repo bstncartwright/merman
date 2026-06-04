@@ -52,6 +52,7 @@ export interface SequenceDiagram {
 }
 
 export interface SequenceDiagramRenderOptions {
+  compact?: boolean
   minParticipantGap?: number
   fragmentBorderStyle?: BorderStyle
   pulseFrame?: number

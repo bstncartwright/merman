@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import stringWidth from "string-width"
+import { renderFlowchartDiagram } from "../flowchart/render.js"
+import { renderSequenceDiagram } from "../sequence/diagram.js"
+import { formatTypeScriptDocComment } from "./doc-comment.js"
 
 async function runCli(args: string[], stdin?: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const process = Bun.spawn(["bun", "src/cli/main.ts", ...args], {
@@ -25,6 +31,160 @@ describe("merman CLI", () => {
     expect(result.stdout).toContain("Start")
     expect(result.stdout).toContain("Done")
     expect(result.stdout).not.toContain("\u001b[")
+  })
+
+  test("wraps plain sequence diagrams in TypeScript doc-comment blocks", async () => {
+    const source = `sequenceDiagram
+  participant Leaf as leaf tool
+  participant File as FileMutation
+  Leaf->>File: commit(plan)`
+    const result = await runCli(["--no-color", "--doc-comment=ts", source])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe("")
+    expect(result.stdout).toBe(`${formatTypeScriptDocComment(renderSequenceDiagram(source))}\n`)
+    expect(result.stdout).not.toContain("\u001b[")
+  })
+
+  test("emits plain text for TypeScript doc-comments without requiring --no-color", async () => {
+    const source = "sequenceDiagram\n  Leaf->>File: commit(plan)"
+    const result = await runCli(["--doc-comment=ts", source])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe("")
+    expect(result.stdout).not.toContain("\u001b[")
+  })
+
+  test("wraps compact sequence diagrams in TypeScript doc-comment blocks", async () => {
+    const source = "sequenceDiagram\n  Leaf->>File: commit(plan)"
+    const result = await runCli(["--no-color", "--compact", "--doc-comment=ts", source])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe("")
+    expect(result.stdout).toBe(`${formatTypeScriptDocComment(renderSequenceDiagram(source, { compact: true }))}\n`)
+  })
+
+  test("wraps compact flowcharts in TypeScript doc-comment blocks", async () => {
+    const source = "flowchart LR\n  A[Idea] --> B[Terminal]"
+    const result = await runCli(["--no-color", "--compact", "--doc-comment=ts", source])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe("")
+    expect(result.stdout).toBe(`${formatTypeScriptDocComment(renderFlowchartDiagram(source, { compact: true }))}\n`)
+  })
+
+  test("formats blank rendered lines without trailing spaces", () => {
+    expect(formatTypeScriptDocComment("first\n\n  indented")).toBe(`/**
+ * first
+ *
+ *   indented
+ */`)
+  })
+
+  test("leaves sequence output unchanged without a doc-comment option", async () => {
+    const source = "sequenceDiagram\n  Leaf->>File: commit(plan)"
+    const result = await runCli(["--no-color", source])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe("")
+    expect(result.stdout).toBe(`${renderSequenceDiagram(source)}\n`)
+  })
+
+  test("replaces every inline Mermaid doc-comment fence in a TypeScript file", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "merman-cli-"))
+    const target = join(directory, "example.ts")
+    const firstSource = "sequenceDiagram\n  Client->>Server: request"
+    const secondSource = "sequenceDiagram\n  Worker->>Store: commit"
+    await writeFile(
+      target,
+      `const before = true
+
+/**
+ * \`\`\`mermaid
+ * sequenceDiagram
+ *   Client->>Server: request
+ * \`\`\`
+ */
+export function request() {}
+
+/**
+ * \`\`\`mermaid
+ * sequenceDiagram
+ *   Worker->>Store: commit
+ * \`\`\`
+ */
+export function commit() {}
+`,
+    )
+
+    try {
+      const result = await runCli(["--compact", "--replace", target])
+      const updated = await readFile(target, "utf8")
+
+      expect(result).toEqual({ stdout: `Replaced 2 Mermaid blocks in ${target}.\n`, stderr: "", exitCode: 0 })
+      expect(updated).toBe(`const before = true
+
+${formatTypeScriptDocComment(renderSequenceDiagram(firstSource, { compact: true }))}
+export function request() {}
+
+${formatTypeScriptDocComment(renderSequenceDiagram(secondSource, { compact: true }))}
+export function commit() {}
+`)
+      expect(updated).not.toContain("\u001b[")
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("does not partially replace a file when an inline diagram cannot render", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "merman-cli-"))
+    const target = join(directory, "example.ts")
+    const original = `/**
+ * \`\`\`mermaid
+ * sequenceDiagram
+ *   A->>B: valid
+ * \`\`\`
+ */
+
+/**
+ * \`\`\`mermaid
+ * not a diagram
+ * \`\`\`
+ */
+`
+    await writeFile(target, original)
+
+    try {
+      const result = await runCli(["--replace", target])
+
+      expect(result.exitCode).toBe(1)
+      expect(result.stdout).toBe("")
+      expect(await readFile(target, "utf8")).toBe(original)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("does not replace Mermaid fences outside TypeScript doc-comments", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "merman-cli-"))
+    const target = join(directory, "example.ts")
+    const original = `/*
+ * \`\`\`mermaid
+ * sequenceDiagram
+ *   A->>B: untouched
+ * \`\`\`
+ */
+`
+    await writeFile(target, original)
+
+    try {
+      const result = await runCli(["--replace", target])
+
+      expect(result.exitCode).toBe(1)
+      expect(await readFile(target, "utf8")).toBe(original)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 
   test("folds horizontal flowcharts that exceed the redirected output width", async () => {

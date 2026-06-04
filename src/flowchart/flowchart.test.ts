@@ -62,6 +62,41 @@ function routeRunsAlongVerticalBorder(
 }
 
 describe("FlowchartDiagram", () => {
+  test("renders compact horizontal flowcharts with shorter routes", () => {
+    const output = renderFlowchartDiagram(
+      `flowchart LR
+  A[Idea] --> B[Parse]
+  B --> C[Render]
+  C --> D[Terminal]`,
+      { compact: true },
+    )
+
+    expectDiagram(output).toEqualDiagram(`
+      ╭──────╮    ╭───────╮    ╭────────╮    ╭──────────╮
+      │ Idea ├───▶│ Parse ├───▶│ Render ├───▶│ Terminal │
+      ╰──────╯    ╰───────╯    ╰────────╯    ╰──────────╯
+    `)
+  })
+
+  test("renders compact vertical flowcharts with a readable arrow stem", () => {
+    const output = renderFlowchartDiagram(
+      `flowchart TD
+  A[Start] --> B[Done]`,
+      { compact: true },
+    )
+
+    expectDiagram(output).toEqualDiagram(`
+      ╭───────╮
+      │ Start │
+      ╰───┬───╯
+          │
+          ▼
+      ╭──────╮
+      │ Done │
+      ╰──────╯
+    `)
+  })
+
   test("keeps Unicode node labels inside their measured frame", () => {
     const output = renderFlowchartDiagram(`flowchart LR
   A[界]`)

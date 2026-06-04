@@ -20,7 +20,7 @@
         "typescript": "^5",
       },
       "peerDependencies": {
-        "@opentui/core": ">=0.2.2",
+        "@opentui/core": "^0.2.2",
       },
     },
     "examples": {

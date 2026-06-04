@@ -64,6 +64,7 @@ export type SequenceStepPlacement =
       rightX: number
       headX: number
       direction: 1 | -1
+      inlineLabel?: string
     }
   | {
       type: "selfMessage"
@@ -123,8 +124,8 @@ function messageLabelText(message: SequenceMessage): string {
   return message.number === undefined ? message.label : `${message.number}. ${message.label}`
 }
 
-function participantHeaderWidth(label: string): number {
-  return Math.max(5, visualLength(label) + 4)
+function participantHeaderWidth(label: string, compact: boolean): number {
+  return compact ? visualLength(label) : Math.max(5, visualLength(label) + 4)
 }
 
 function fragmentLabelText(fragment: SequenceFragment): string {
@@ -158,11 +159,34 @@ function arrowHeadX(toX: number, direction: 1 | -1, head: SequenceMessage["head"
   return head === undefined ? toX : toX - direction
 }
 
-function getStepHeight(step: SequenceStep): number {
+function inlineMessageLabel(
+  message: SequenceMessage,
+  labelLines: string[],
+  fromX: number,
+  toX: number,
+  compact: boolean,
+): string | undefined {
+  if (!compact || message.from === message.to || labelLines.length !== 1) return undefined
+  const label = ` ${labelLines[0]} `
+  return visualLength(label) <= Math.abs(toX - fromX) - 3 ? label : undefined
+}
+
+function getStepHeight(
+  step: SequenceStep,
+  centers: number[],
+  participantIndexes: Map<string, number>,
+  compact: boolean,
+): number {
   if (step.type === "note") return 3
   if (step.type === "activation") return 0
   if (step.type === "fragment") return 2
-  return messageLabelLines(messageLabelText(step.message)).length + (step.message.from === step.message.to ? 3 : 2)
+  const labelLines = messageLabelLines(messageLabelText(step.message))
+  const fromX = centers[participantIndexes.get(step.message.from) ?? -1]
+  const toX = centers[participantIndexes.get(step.message.to) ?? -1]
+  if (fromX !== undefined && toX !== undefined && inlineMessageLabel(step.message, labelLines, fromX, toX, compact)) {
+    return 2
+  }
+  return labelLines.length + (step.message.from === step.message.to ? 3 : 2)
 }
 
 function createParticipantIndexMap(diagram: SequenceDiagram): Map<string, number> {
@@ -226,12 +250,13 @@ function resolveGroupBounds(
   centers: number[],
   participantIndexes: Map<string, number>,
   groupRanges: SequenceGroupRange[],
+  compact: boolean,
 ): SequenceGroupPlacement[] {
   return groupRanges.map((range) => {
     let contentLeftX = centers[range.startIndex]!
     let contentRightX = centers[range.endIndex]!
     for (let i = range.startIndex; i <= range.endIndex; i++) {
-      const headerWidth = participantHeaderWidth(diagram.participants[i]!.label)
+      const headerWidth = participantHeaderWidth(diagram.participants[i]!.label, compact)
       const headerStartX = centers[i]! - Math.floor(headerWidth / 2)
       contentLeftX = Math.min(contentLeftX, headerStartX)
       contentRightX = Math.max(contentRightX, headerStartX + headerWidth - 1)
@@ -264,10 +289,11 @@ function getDiagramContentBounds(
   diagram: SequenceDiagram,
   centers: number[],
   participantIndexes: Map<string, number>,
+  compact: boolean,
 ): SequenceHorizontalBounds {
   const bounds = { leftX: 0, rightX: 0 }
   for (let i = 0; i < diagram.participants.length; i++) {
-    const headerWidth = participantHeaderWidth(diagram.participants[i]!.label)
+    const headerWidth = participantHeaderWidth(diagram.participants[i]!.label, compact)
     const labelStartX = centers[i]! - Math.floor(headerWidth / 2)
     expandHorizontalBounds(bounds, labelStartX, labelStartX + headerWidth - 1)
   }
@@ -331,13 +357,16 @@ function resolveParticipantCenters(
   diagram: SequenceDiagram,
   participantIndexes: Map<string, number>,
   minParticipantGap: number,
+  compact: boolean,
 ): number[] {
   const gaps = Array.from({ length: Math.max(0, diagram.participants.length - 1) }, (_, index) => {
     const left = diagram.participants[index]!
     const right = diagram.participants[index + 1]!
     return Math.max(
       minParticipantGap,
-      Math.ceil(participantHeaderWidth(left.label) / 2) + Math.ceil(participantHeaderWidth(right.label) / 2) + 6,
+      Math.ceil(participantHeaderWidth(left.label, compact) / 2) +
+        Math.ceil(participantHeaderWidth(right.label, compact) / 2) +
+        6,
     )
   })
   for (const message of diagram.messages) {
@@ -361,7 +390,7 @@ function resolveParticipantCenters(
     const gapIndex = Math.min(indexes[0]!, indexes[1]!)
     gaps[gapIndex] = Math.max(gaps[gapIndex]!, visualLength(noteLabelText(step.note.label)) + 4)
   }
-  const centers = [Math.max(1, Math.floor(participantHeaderWidth(diagram.participants[0]?.label ?? "") / 2))]
+  const centers = [Math.max(1, Math.floor(participantHeaderWidth(diagram.participants[0]?.label ?? "", compact) / 2))]
   for (let i = 1; i < diagram.participants.length; i++) centers[i] = centers[i - 1]! + gaps[i - 1]!
   return centers
 }
@@ -371,16 +400,17 @@ function separateExpandedGroupsFromExternalParticipants(
   centers: number[],
   participantIndexes: Map<string, number>,
   ranges: SequenceGroupRange[],
+  compact: boolean,
 ): number[] {
   const adjusted = [...centers]
   for (let pass = 0; pass < Math.max(1, ranges.length * 2); pass++) {
     let changed = false
-    const groups = resolveGroupBounds(diagram, adjusted, participantIndexes, ranges)
+    const groups = resolveGroupBounds(diagram, adjusted, participantIndexes, ranges, compact)
     for (const [index, range] of ranges.entries()) {
       const group = groups[index]!
       if (range.startIndex > 0) {
         const previousIndex = range.startIndex - 1
-        const previousWidth = participantHeaderWidth(diagram.participants[previousIndex]!.label)
+        const previousWidth = participantHeaderWidth(diagram.participants[previousIndex]!.label, compact)
         const previousRight = adjusted[previousIndex]! - Math.floor(previousWidth / 2) + previousWidth - 1
         const shift = previousRight + GROUP_HORIZONTAL_PADDING + 1 - group.leftX
         if (shift > 0) {
@@ -392,7 +422,7 @@ function separateExpandedGroupsFromExternalParticipants(
       }
       if (range.endIndex < diagram.participants.length - 1) {
         const nextIndex = range.endIndex + 1
-        const nextWidth = participantHeaderWidth(diagram.participants[nextIndex]!.label)
+        const nextWidth = participantHeaderWidth(diagram.participants[nextIndex]!.label, compact)
         const nextLeft = adjusted[nextIndex]! - Math.floor(nextWidth / 2)
         const shift = group.rightX + GROUP_HORIZONTAL_PADDING + 1 - nextLeft
         if (shift > 0) {
@@ -410,7 +440,7 @@ function separateExpandedGroupsFromExternalParticipants(
 
 export function createSequencePlacementPlan(
   diagram: SequenceDiagram,
-  options: Pick<SequenceDiagramRenderOptions, "minParticipantGap"> = {},
+  options: Pick<SequenceDiagramRenderOptions, "compact" | "minParticipantGap"> = {},
 ): SequencePlacementPlan {
   if (diagram.participants.length === 0) {
     return {
@@ -429,15 +459,17 @@ export function createSequencePlacementPlan(
     }
   }
   const indexes = createParticipantIndexMap(diagram)
+  const compact = options.compact ?? false
   let centers = resolveParticipantCenters(
     diagram,
     indexes,
     normalizeSequenceMinParticipantGap(options.minParticipantGap),
+    compact,
   )
   const ranges = getGroupRanges(diagram, indexes)
-  centers = separateExpandedGroupsFromExternalParticipants(diagram, centers, indexes, ranges)
-  let groups = resolveGroupBounds(diagram, centers, indexes, ranges)
-  let contentBounds = getDiagramContentBounds(diagram, centers, indexes)
+  centers = separateExpandedGroupsFromExternalParticipants(diagram, centers, indexes, ranges, compact)
+  let groups = resolveGroupBounds(diagram, centers, indexes, ranges, compact)
+  let contentBounds = getDiagramContentBounds(diagram, centers, indexes, compact)
   let frameBounds = getFragmentFrameBoundsByStep(centers, diagram.steps, indexes)
   const fragmentBounds = (): SequenceHorizontalBounds => {
     const result = { leftX: 0, rightX: 0 }
@@ -453,24 +485,25 @@ export function createSequencePlacementPlan(
   )
   if (leftOverflow < 0) {
     centers = centers.map((center) => center - leftOverflow)
-    groups = resolveGroupBounds(diagram, centers, indexes, ranges)
-    contentBounds = getDiagramContentBounds(diagram, centers, indexes)
+    groups = resolveGroupBounds(diagram, centers, indexes, ranges, compact)
+    contentBounds = getDiagramContentBounds(diagram, centers, indexes, compact)
     frameBounds = getFragmentFrameBoundsByStep(centers, diagram.steps, indexes)
     fragments = fragmentBounds()
   }
   const hasGroups = groups.length > 0
   const participantHeaderTopY = hasGroups ? 1 : 0
-  const participantHeaderY = participantHeaderTopY + 1
-  const participantRuleY = participantHeaderTopY + 2
+  const participantHeaderY = participantHeaderTopY + (compact ? 0 : 1)
+  const participantRuleY = participantHeaderTopY + (compact ? 0 : 2)
   const lifelineStartY = participantRuleY + 1
   const stepStartY = lifelineStartY + 1
   const width = Math.max(contentBounds.rightX + 1, ...groups.map((group) => group.rightX + 1), fragments.rightX + 1)
-  const baseHeight = stepStartY + diagram.steps.reduce((total, step) => total + getStepHeight(step), 0)
+  const baseHeight =
+    stepStartY + diagram.steps.reduce((total, step) => total + getStepHeight(step, centers, indexes, compact), 0)
   const height = hasGroups ? Math.max(5, baseHeight + 1) : Math.max(3, baseHeight)
   const lifelineEndY = hasGroups ? height - 2 : height - 1
   const participants = diagram.participants.map((participant, index) => {
     const centerX = centers[index]!
-    const width = participantHeaderWidth(participant.label)
+    const width = participantHeaderWidth(participant.label, compact)
     const headerLeftX = centerX - Math.floor(width / 2)
     return {
       participant,
@@ -485,7 +518,7 @@ export function createSequencePlacementPlan(
   const activeFrames: ActiveFragmentFrame[] = []
   for (const [stepIndex, step] of diagram.steps.entries()) {
     if (step.type === "activation") continue
-    const stepHeight = getStepHeight(step)
+    const stepHeight = getStepHeight(step, centers, indexes, compact)
     if (step.type === "note") {
       const noteIndexes = getParticipantIndexes(indexes, step.note.over)
       if (noteIndexes.length > 0) {
@@ -543,19 +576,21 @@ export function createSequencePlacementPlan(
       const direction: 1 | -1 = toX > fromX ? 1 : -1
       const leftX = Math.min(fromX, toX)
       const rightX = Math.max(fromX, toX)
+      const inlineLabel = inlineMessageLabel(step.message, labelLines, fromX, toX, compact)
       steps.push({
         type: "message",
         message: step.message,
         labelLines,
         labelX: leftX + 2,
         labelY: stepY,
-        arrowY: stepY + labelLines.length,
+        arrowY: inlineLabel ? stepY : stepY + labelLines.length,
         fromX,
         toX,
         leftX,
         rightX,
         direction,
         headX: arrowHeadX(toX, direction, step.message.head),
+        inlineLabel,
       })
     }
     stepY += stepHeight

@@ -34,6 +34,7 @@ function flowchartActiveEdgesEqual(
 
 export class FlowchartDiagramRenderable extends TextBufferRenderable {
   private _content: string
+  private _compact: boolean
   private _direction?: FlowchartDirection
   private _borderStyle: BorderStyle
   private _minNodeGap?: number
@@ -63,6 +64,7 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
   constructor(ctx: RenderContext, options: FlowchartDiagramOptions = {}) {
     super(ctx, { ...options, wrapMode: options.wrapMode ?? "none" })
     this._content = options.content ?? ""
+    this._compact = options.compact ?? false
     this._direction = options.direction
     this._borderStyle = options.borderStyle ?? DEFAULT_BORDER_STYLE
     this._minNodeGap = options.minNodeGap
@@ -109,6 +111,16 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
 
   get renderedWidth(): number {
     return this._renderedWidth
+  }
+
+  get compact(): boolean {
+    return this._compact
+  }
+
+  set compact(value: boolean) {
+    if (this._compact === value) return
+    this._compact = value
+    this.invalidateDiagram()
   }
 
   get renderedHeight(): number {
@@ -343,6 +355,7 @@ export class FlowchartDiagramRenderable extends TextBufferRenderable {
 
   private renderOptions(): FlowchartDiagramRenderOptions {
     return {
+      compact: this._compact,
       direction: this._direction,
       borderStyle: this._borderStyle,
       minNodeGap: this._minNodeGap,

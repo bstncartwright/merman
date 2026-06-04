@@ -17,6 +17,7 @@ import type { SequenceDiagram, SequenceDiagramOptions } from "./types.js"
 
 export class SequenceDiagramRenderable extends TextBufferRenderable {
   private _content: string
+  private _compact: boolean
   private _minParticipantGap: number
   private _fragmentBorderStyle: BorderStyle
   private _pulseFrame?: number
@@ -35,6 +36,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   constructor(ctx: RenderContext, options: SequenceDiagramOptions = {}) {
     super(ctx, { ...options, wrapMode: options.wrapMode ?? "none" })
     this._content = options.content ?? ""
+    this._compact = options.compact ?? false
     this._minParticipantGap = normalizeSequenceMinParticipantGap(options.minParticipantGap)
     this._fragmentBorderStyle = options.fragmentBorderStyle ?? DEFAULT_FRAGMENT_BORDER_STYLE
     this._pulseFrame = normalizeSequencePulseFrame(options.pulseFrame)
@@ -64,6 +66,16 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     if (this._content === value) return
     this._content = value
     this._pipeline.invalidateParsedDiagram()
+  }
+
+  get compact(): boolean {
+    return this._compact
+  }
+
+  set compact(value: boolean) {
+    if (this._compact === value) return
+    this._compact = value
+    this._pipeline.invalidateGrid()
   }
 
   get minParticipantGap(): number {
@@ -215,6 +227,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
 
   private drawGrid(diagram: SequenceDiagram): SequenceGrid {
     return layoutSequenceDiagram(diagram, {
+      compact: this._compact,
       minParticipantGap: this._minParticipantGap,
       fragmentBorderStyle: this._fragmentBorderStyle,
       pulseFrame: this._pulseFrame,

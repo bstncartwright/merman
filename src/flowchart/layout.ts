@@ -29,6 +29,8 @@ export const DEFAULT_MIN_NODE_GAP = 5
 export const DEFAULT_MIN_BRANCH_LABEL_GAP = 12
 export const DEFAULT_MIN_RANK_GAP = 10
 export const DEFAULT_MIN_VERTICAL_RANK_GAP = 4
+export const COMPACT_MIN_RANK_GAP = 4
+export const COMPACT_MIN_VERTICAL_RANK_GAP = 2
 const SUBGRAPH_PADDING_X = 2
 const SUBGRAPH_PADDING_TOP = 1
 const SUBGRAPH_PADDING_BOTTOM = 1
@@ -591,7 +593,13 @@ function layoutFlowchartWithDirection(
   const minNodeGap = normalizePositiveInt(options.minNodeGap, DEFAULT_MIN_NODE_GAP)
   const requestedMinRankGap = normalizePositiveInt(
     options.minRankGap,
-    horizontal ? DEFAULT_MIN_RANK_GAP : DEFAULT_MIN_VERTICAL_RANK_GAP,
+    options.compact
+      ? horizontal
+        ? COMPACT_MIN_RANK_GAP
+        : COMPACT_MIN_VERTICAL_RANK_GAP
+      : horizontal
+        ? DEFAULT_MIN_RANK_GAP
+        : DEFAULT_MIN_VERTICAL_RANK_GAP,
   )
   const sizes = new Map(diagram.nodes.map((node) => [node.id, nodeSize(node)]))
   const bounds = layoutRankedNodes(diagram, direction, sizes, minNodeGap, requestedMinRankGap)
