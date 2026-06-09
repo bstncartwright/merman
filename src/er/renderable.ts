@@ -1,8 +1,7 @@
 import { TextBufferRenderable, type RenderContext } from "@opentui/core"
 import { DiagramRenderablePipeline } from "../core/adapter/renderable-pipeline.js"
-import { renderFlowchartGrid } from "../flowchart/drawing.js"
+import { renderErGrid } from "./render.js"
 import { renderGridStyledText, resolveFlowchartStyleColors, type FlowchartGrid } from "../flowchart/style.js"
-import { erDiagramToFlowchartDiagram } from "./adapter.js"
 import { parseMermaidErDiagram } from "./parser.js"
 import type { ErDiagram, ErDiagramOptions } from "./types.js"
 
@@ -17,7 +16,7 @@ export class ErDiagramRenderable extends TextBufferRenderable {
     this._compact = options.compact ?? false
     this._pipeline = new DiagramRenderablePipeline({
       parse: () => parseMermaidErDiagram(this._content),
-      draw: (diagram) => renderFlowchartGrid(erDiagramToFlowchartDiagram(diagram), { compact: this._compact }),
+      draw: (diagram) => renderErGrid(diagram, { compact: this._compact }),
       publish: (grid) => this.publishStyledText(grid),
     })
     this._pipeline.invalidateParsedDiagram()

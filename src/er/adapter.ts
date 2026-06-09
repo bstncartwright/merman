@@ -12,23 +12,17 @@ function entityLabel(entity: ErDiagram["entities"][number]): string {
   return [entity.label, "────────", ...entity.attributes.map(attributeLine)].join("<br/>")
 }
 
-function cardinalityMarker(cardinality: ErCardinality, side: "left" | "right"): string {
+export function erCardinalityMarker(cardinality: ErCardinality, side: "source" | "target"): string {
   switch (cardinality) {
     case "zeroOrOne":
-      return side === "left" ? "|o" : "o|"
+      return side === "source" ? "|o" : "o|"
     case "exactlyOne":
       return "||"
     case "zeroOrMore":
-      return side === "left" ? "}o" : "o{"
+      return side === "source" ? "}o" : "o{"
     case "oneOrMore":
-      return side === "left" ? "}|" : "|{"
+      return side === "source" ? "}|" : "|{"
   }
-}
-
-function relationshipLabel(relationship: ErDiagram["relationships"][number]): string {
-  const from = cardinalityMarker(relationship.fromCardinality, "left")
-  const to = cardinalityMarker(relationship.toCardinality, "right")
-  return `${from}<br/>${to}<br/>${relationship.label}`
 }
 
 function normalizeDirection(direction: ErDiagram["direction"]): FlowchartDirection {
@@ -39,7 +33,7 @@ export function erDiagramToFlowchartDiagram(diagram: ErDiagram): FlowchartDiagra
   const edges: FlowchartEdge[] = diagram.relationships.map((relationship) => ({
     from: relationship.from,
     to: relationship.to,
-    label: relationshipLabel(relationship),
+    label: relationship.label,
     style: relationship.identifying === "non-identifying" ? "dashed" : undefined,
     head: "none",
   }))

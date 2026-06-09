@@ -36,6 +36,11 @@ describe("ER diagrams", () => {
     expect(output).toContain("||")
     expect(output).toContain("o{")
     expect(output).toContain("|{")
+    expect(output.split("\n").some((line) => /^\s*(?:\|\||o\{|\|\{|}o|}\|)\s*$/.test(line))).toBe(false)
+    expect(output).toContain("├||─ places")
+    expect(output).toContain("o{│ ORDER")
+    expect(output).toContain("ORDER ├||")
+    expect(output).toContain("|{│ LINE_ITEM")
   })
 
   test("supports quoted entity names, aliases, and non-identifying relationships", () => {
