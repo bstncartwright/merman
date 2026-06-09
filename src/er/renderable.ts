@@ -8,6 +8,8 @@ import type { ErDiagram, ErDiagramOptions } from "./types.js"
 export class ErDiagramRenderable extends TextBufferRenderable {
   private _content: string
   private _compact: boolean
+  private _renderedWidth = 0
+  private _renderedHeight = 0
   private readonly _pipeline: DiagramRenderablePipeline<ErDiagram, FlowchartGrid>
 
   constructor(ctx: RenderContext, options: ErDiagramOptions = {}) {
@@ -17,6 +19,7 @@ export class ErDiagramRenderable extends TextBufferRenderable {
     this._pipeline = new DiagramRenderablePipeline({
       parse: () => parseMermaidErDiagram(this._content),
       draw: (diagram) => renderErGrid(diagram, { compact: this._compact }),
+      didDraw: (grid) => this.updateRenderedSize(grid),
       publish: (grid) => this.publishStyledText(grid),
     })
     this._pipeline.invalidateParsedDiagram()
@@ -32,6 +35,14 @@ export class ErDiagramRenderable extends TextBufferRenderable {
     this._pipeline.invalidateParsedDiagram()
   }
 
+  get renderedWidth(): number {
+    return this._renderedWidth
+  }
+
+  get renderedHeight(): number {
+    return this._renderedHeight
+  }
+
   get compact(): boolean {
     return this._compact
   }
@@ -40,6 +51,12 @@ export class ErDiagramRenderable extends TextBufferRenderable {
     if (this._compact === value) return
     this._compact = value
     this._pipeline.invalidateGrid()
+  }
+
+  private updateRenderedSize(grid: FlowchartGrid): void {
+    const size = grid.getTextSize({ trimTop: true, trimBottom: true })
+    this._renderedWidth = size.width
+    this._renderedHeight = size.height
   }
 
   private publishStyledText(grid: FlowchartGrid): void {
